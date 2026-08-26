@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# Entornos virtuales y Python
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# ---------------------------------------------------------------------------
+# Datos: se regeneran con scripts (download_raw_data.py, el DAG), no se
+# versionan en Git. Excepcion: el manifest.json SI se commitea -- es
+# metadata ligera y valiosa (linaje: que se descargo, cuando, con que checksum).
+# ---------------------------------------------------------------------------
+data/raw/*.csv
+data/bronze/
+data/tmp/
+data/reports/*.html
+data/reports/*.csv
+!data/raw/manifest.json
+
+# ---------------------------------------------------------------------------
+# Airflow
+# ---------------------------------------------------------------------------
+logs/
+plugins/*
+!plugins/.gitkeep
+
+# ---------------------------------------------------------------------------
+# Variables de entorno / secretos
+# Por ahora tu .env solo tiene AIRFLOW_UID (sin riesgo), pero cuando migres a
+# MinIO ahi van credenciales reales -- mejor ignorarlo desde ya por habito.
+# ---------------------------------------------------------------------------
+.env
+!.env.example
+
+# ---------------------------------------------------------------------------
+# Frontend (Node.js)
+# ---------------------------------------------------------------------------
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+
+# ---------------------------------------------------------------------------
+# Sistema operativo / IDE
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.ipynb_checkpoints/

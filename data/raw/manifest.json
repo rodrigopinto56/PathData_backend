@@ -1,0 +1,14 @@
+{
+  "loan_default_risk_dataset.csv": {
+    "kaggle_id": "himelsarder/loan-default-risk-prediction-dataset",
+    "sha256": "051c4dd0600befa413f8d809636fbd980fa574533ad07cb8ff4c753192bcfe4a",
+    "descargado_en": "2026-08-26T04:41:52.551321+00:00",
+    "filas": 300
+  },
+  "synthetic_personal_finance_dataset.csv": {
+    "kaggle_id": "miadul/personal-finance-ml-dataset",
+    "sha256": "b54172efe63e9c32bc0e1281ee22a79d9ae0def21786b1cc75ffb252539f7012",
+    "descargado_en": "2026-08-26T04:41:53.885038+00:00",
+    "filas": 32424
+  }
+}
