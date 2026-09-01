@@ -7,7 +7,9 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
-    _PIP_ADDITIONAL_REQUIREMENTS: pandas pyarrow
+    _PIP_ADDITIONAL_REQUIREMENTS: pandas pyarrow apache-airflow-providers-amazon
+    BRONZE_BACKEND: "minio"
+    BRONZE_BUCKET: "bronze-layer"
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -60,5 +62,19 @@ services:
     command: scheduler
     restart: always
 
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000" # Port API (S3)
+      - "9001:9001" # Port Interface graphic
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-volume:/data
+    restart: always
+
 volumes:
   postgres-db-volume:
+  minio-volume:

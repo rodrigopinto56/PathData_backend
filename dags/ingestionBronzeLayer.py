@@ -1,32 +1,32 @@
 """
-Ingesta los datasets ya descargados por scripts/download_raw_data.py hacia
-la capa Bronze, particionada por fecha, con metadata de linaje EMBEBIDA
-fisicamente en cada particion
+dags/ingestionBronzeLayer.py  (v4 - soporte real para MinIO via S3Hook)
+
+Ingesta loan_default_risk y personal_finance_ml hacia Bronze, particionado
+por la fecha LOGICA del DAG run. Soporta 2 backends intercambiables via la
+variable de entorno BRONZE_BACKEND:
+  - "local": escribe en disco (volumen Docker), como hasta ahora.
+  - "minio": escribe al bucket de MinIO usando S3Hook (lee credenciales
+    de la Connection 'minio_s3_conn', nunca hardcodeadas en el codigo).
 """
 
 from __future__ import annotations
-
+import io
 import json
 import os
-
 import pendulum
 import pandas as pd
 from airflow.decorators import dag, task
 from airflow.exceptions import AirflowFailException
-
+from airflow.operators.python import get_current_context
 
 RAW_DIR = "/opt/airflow/data/raw"
 MANIFEST_PATH = f"{RAW_DIR}/manifest.json"
 TMP_DIR = "/opt/airflow/data/tmp"
-
-# Backend de almacenamiento configurable 
 BRONZE_BACKEND = os.getenv("BRONZE_BACKEND", "local")
-BRONZE_PATH = (
-    "/opt/airflow/data/bronze" if BRONZE_BACKEND == "local"
-    else "s3://bronze"  # requiere conexion S3/MinIO configurada en Airflow
-)
+BRONZE_PATH_LOCAL = "/opt/airflow/data/bronze"
+BRONZE_BUCKET = os.getenv("BRONZE_BUCKET", "bronze-layer")  
+S3_CONN_ID = os.getenv("BRONZE_S3_CONN_ID", "minio_s3_conn")
 
-# Esquema confirmado en el Diccionario de Datos (Semana 5)
 RAW_SOURCES = {
     "loan_default_risk": {
         "path": f"{RAW_DIR}/loan_default_risk_dataset.csv",
@@ -49,7 +49,6 @@ default_args = {
     "retry_delay": pendulum.duration(minutes=5),
 }
 
-
 @dag(
     dag_id="ingesta_bronze_dag",
     description="Ingesta loan_default_risk y personal_finance_ml hacia Bronze",
@@ -63,9 +62,6 @@ def ingesta_bronze_dag():
 
     @task
     def extraer_y_validar(fuente: str) -> dict:
-        """Lee el CSV, valida columnas minimas y recupera el checksum del
-        manifiesto (Paso 1) para propagar linaje verificable hacia Bronze.
-        """
         config = RAW_SOURCES[fuente]
         df = pd.read_csv(config["path"])
 
@@ -93,27 +89,53 @@ def ingesta_bronze_dag():
 
     @task
     def cargar_a_bronze(fuente: str, info: dict) -> None:
-        """Persiste el dato en Bronze, particionado por fecha, y escribe
-        un archivo de metadata junto al parquet: trazabilidad FISICA del
-        linaje, no solo una promesa documentada en el catalogo.
+        """Persiste el dato en Bronze, particionado por la fecha LOGICA del
+        DAG run. El destino fisico (disco local o MinIO) se decide por
+        BRONZE_BACKEND, sin cambiar la logica de particionamiento.
         """
-        fecha_ingesta = pendulum.now("America/Mexico_City")
-        particion = fecha_ingesta.format("YYYY/MM/DD")
-        destino = f"{BRONZE_PATH}/{fuente}/{particion}"
-        os.makedirs(destino, exist_ok=True)
+        context = get_current_context()
+        fecha_logica = context["logical_date"].in_timezone("America/Mexico_City")
+        particion = fecha_logica.format("YYYY/MM/DD")
 
         df = pd.read_parquet(info["temp_path"])
-        df.to_parquet(f"{destino}/data.parquet", index=False)
 
         metadata = {
             "fuente": fuente,
             "kaggle_id": info["kaggle_id"],
             "sha256_origen": info["sha256_origen"],
             "filas_ingeridas": info["filas"],
-            "fecha_ingesta": fecha_ingesta.isoformat(),
+            "fecha_logica_particion": fecha_logica.isoformat(),
+            "fecha_ejecucion_real": pendulum.now("America/Mexico_City").isoformat(),
+            "backend": BRONZE_BACKEND,
         }
-        with open(f"{destino}/_ingestion_metadata.json", "w") as f:
-            json.dump(metadata, f, indent=2)
+
+        if BRONZE_BACKEND == "minio":
+            from airflow.providers.amazon.aws.hooks.s3 import S3Hook
+            hook = S3Hook(aws_conn_id=S3_CONN_ID)
+            buffer_parquet = io.BytesIO()
+            df.to_parquet(buffer_parquet, index=False)
+            buffer_parquet.seek(0)
+            key_parquet = f"{fuente}/{particion}/data.parquet"
+            hook.load_bytes(
+                buffer_parquet.read(),
+                key=key_parquet,
+                bucket_name=BRONZE_BUCKET,
+                replace=True,
+            )
+
+            key_meta = f"{fuente}/{particion}/_ingestion_metadata.json"
+            hook.load_string(
+                json.dumps(metadata, indent=2),
+                key=key_meta,
+                bucket_name=BRONZE_BUCKET,
+                replace=True,
+            )
+        else:
+            destino = f"{BRONZE_PATH_LOCAL}/{fuente}/{particion}"
+            os.makedirs(destino, exist_ok=True)
+            df.to_parquet(f"{destino}/data.parquet", index=False)
+            with open(f"{destino}/_ingestion_metadata.json", "w") as f:
+                json.dump(metadata, f, indent=2)
 
     for fuente in RAW_SOURCES:
         info = extraer_y_validar(fuente)
