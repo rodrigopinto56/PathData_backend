@@ -1,13 +1,14 @@
 # docker-compose.yml
 
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.9.3
+  build:
+    context: .
+    dockerfile: Dockerfile
   environment:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
-    _PIP_ADDITIONAL_REQUIREMENTS: pandas pyarrow apache-airflow-providers-amazon
     BRONZE_BACKEND: "minio"
     BRONZE_BUCKET: "bronze-layer"
   volumes:
@@ -15,6 +16,7 @@ x-airflow-common: &airflow-common
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
     - ./data:/opt/airflow/data
+    - ./src/spark:/opt/spark-apps
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     postgres:
@@ -73,6 +75,34 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - minio-volume:/data
+    restart: always
+
+  spark:
+    image: bitnamilegacy/spark:latest
+    user: "${AIRFLOW_UID:-50000}:0"
+    environment:
+      - SPARK_MODE=master
+      - HOME=/tmp
+    ports:
+      - "7077:7077" # Port for Spark master
+      - "8081:8080" # Port for Spark Web UI
+    volumes:
+      - ./data:/opt/airflow/data
+      - ./src/spark:/opt/spark-apps
+    restart: always
+
+  spark-worker:
+    image: bitnamilegacy/spark:latest
+    user: "${AIRFLOW_UID:-50000}:0"
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark:7077
+      - HOME=/tmp
+    depends_on:
+      - spark
+    volumes:
+      - ./data:/opt/airflow/data
+      - ./src/spark:/opt/spark-apps
     restart: always
 
 volumes:

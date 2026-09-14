@@ -12,3 +12,33 @@
 {"nivel": "INFO", "task": "extraer_y_validar", "fuente": "personal_finance_ml", "filas_leidas": 32424, "duracion_segundos": 0.46, "resultado": "success", "timestamp": "2026-09-07T23:16:56.918130-06:00"}
 {"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "personal_finance_ml", "particion": "2026/09/07", "backend": "minio", "duracion_segundos": 0.88, "resultado": "success", "timestamp": "2026-09-07T23:16:59.644472-06:00"}
 {"nivel": "INFO", "task": "auditar_bronze", "total_particiones": 36, "particiones_con_problemas": 0, "problemas": [], "timestamp": "2026-09-07T23:17:02.282406-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "loan_default_risk", "filas_leidas": 300, "duracion_segundos": 0.12, "resultado": "success", "timestamp": "2026-09-08T22:53:33.777355-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "personal_finance_ml", "filas_leidas": 32424, "duracion_segundos": 0.56, "resultado": "success", "timestamp": "2026-09-08T22:53:34.115284-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "loan_default_risk", "particion": "2026/09/07", "backend": "minio", "duracion_segundos": 0.9, "resultado": "success", "timestamp": "2026-09-08T22:53:36.529088-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "personal_finance_ml", "particion": "2026/09/07", "backend": "minio", "duracion_segundos": 0.91, "resultado": "success", "timestamp": "2026-09-08T22:53:36.535668-06:00"}
+{"nivel": "INFO", "task": "auditar_bronze", "total_particiones": 36, "particiones_con_problemas": 0, "problemas": [], "timestamp": "2026-09-08T22:53:38.122957-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "loan_default_risk", "filas_leidas": 300, "duracion_segundos": 0.25, "resultado": "success", "timestamp": "2026-09-09T00:00:04.770610-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "personal_finance_ml", "filas_leidas": 32424, "duracion_segundos": 0.69, "resultado": "success", "timestamp": "2026-09-09T00:00:05.209395-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "loan_default_risk", "particion": "2026/09/08", "backend": "minio", "duracion_segundos": 1.18, "resultado": "success", "timestamp": "2026-09-09T00:00:09.219058-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "personal_finance_ml", "particion": "2026/09/08", "backend": "minio", "duracion_segundos": 1.44, "resultado": "success", "timestamp": "2026-09-09T00:00:09.241948-06:00"}
+{"nivel": "INFO", "task": "auditar_bronze", "total_particiones": 38, "particiones_con_problemas": 0, "problemas": [], "timestamp": "2026-09-09T00:00:12.346514-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "loan_default_risk", "filas_leidas": 300, "duracion_segundos": 0.13, "resultado": "success", "timestamp": "2026-09-10T23:22:30.450031-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "personal_finance_ml", "filas_leidas": 32424, "duracion_segundos": 0.45, "resultado": "success", "timestamp": "2026-09-10T23:22:30.772693-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "loan_default_risk", "particion": "2026/09/09", "backend": "minio", "duracion_segundos": 0.58, "resultado": "success", "timestamp": "2026-09-10T23:22:32.726129-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "personal_finance_ml", "particion": "2026/09/09", "backend": "minio", "duracion_segundos": 0.62, "resultado": "success", "timestamp": "2026-09-10T23:22:32.794661-06:00"}
+{"nivel": "INFO", "task": "auditar_bronze", "total_particiones": 40, "particiones_con_problemas": 0, "problemas": [], "timestamp": "2026-09-10T23:22:35.297063-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "loan_default_risk", "filas_leidas": 300, "duracion_segundos": 0.12, "resultado": "success", "timestamp": "2026-09-11T00:00:02.776544-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "personal_finance_ml", "filas_leidas": 32424, "duracion_segundos": 0.44, "resultado": "success", "timestamp": "2026-09-11T00:00:03.071525-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "loan_default_risk", "particion": "2026/09/10", "backend": "minio", "duracion_segundos": 0.72, "resultado": "success", "timestamp": "2026-09-11T00:00:05.790953-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "personal_finance_ml", "particion": "2026/09/10", "backend": "minio", "duracion_segundos": 0.81, "resultado": "success", "timestamp": "2026-09-11T00:00:05.839779-06:00"}
+{"nivel": "INFO", "task": "auditar_bronze", "total_particiones": 42, "particiones_con_problemas": 0, "problemas": [], "timestamp": "2026-09-11T00:00:08.406165-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "loan_default_risk", "filas_leidas": 300, "duracion_segundos": 0.15, "resultado": "success", "timestamp": "2026-09-12T23:34:52.603691-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "personal_finance_ml", "filas_leidas": 32424, "duracion_segundos": 0.53, "resultado": "success", "timestamp": "2026-09-12T23:34:52.982033-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "loan_default_risk", "particion": "2026/09/11", "backend": "minio", "duracion_segundos": 0.6, "resultado": "success", "timestamp": "2026-09-12T23:34:54.795274-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "personal_finance_ml", "particion": "2026/09/11", "backend": "minio", "duracion_segundos": 0.4, "resultado": "success", "timestamp": "2026-09-12T23:34:55.748046-06:00"}
+{"nivel": "INFO", "task": "auditar_bronze", "total_particiones": 44, "particiones_con_problemas": 0, "problemas": [], "timestamp": "2026-09-12T23:34:58.506094-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "loan_default_risk", "filas_leidas": 300, "duracion_segundos": 0.09, "resultado": "success", "timestamp": "2026-09-13T00:00:01.720739-06:00"}
+{"nivel": "INFO", "task": "extraer_y_validar", "fuente": "personal_finance_ml", "filas_leidas": 32424, "duracion_segundos": 0.51, "resultado": "success", "timestamp": "2026-09-13T00:00:02.138964-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "loan_default_risk", "particion": "2026/09/12", "backend": "minio", "duracion_segundos": 0.5, "resultado": "success", "timestamp": "2026-09-13T00:00:04.047708-06:00"}
+{"nivel": "INFO", "task": "cargar_a_bronze", "fuente": "personal_finance_ml", "particion": "2026/09/12", "backend": "minio", "duracion_segundos": 0.58, "resultado": "success", "timestamp": "2026-09-13T00:00:04.131518-06:00"}
+{"nivel": "INFO", "task": "auditar_bronze", "total_particiones": 46, "particiones_con_problemas": 0, "problemas": [], "timestamp": "2026-09-13T00:00:06.581534-06:00"}
