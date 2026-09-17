@@ -1,0 +1,47 @@
+{
+  "generado_en": "2026-09-16T00:41:04.487208+00:00",
+  "fuentes": [
+    {
+      "fuente": "loan_default_risk",
+      "particiones": [
+        {
+          "fecha": "2026/09/01",
+          "filas_evaluadas": 297,
+          "exito_global": true,
+          "expectativas_totales": 8,
+          "expectativas_exitosas": 8,
+          "expectativas_fallidas": []
+        },
+        {
+          "fecha": "2026/09/02",
+          "filas_evaluadas": 297,
+          "exito_global": true,
+          "expectativas_totales": 8,
+          "expectativas_exitosas": 8,
+          "expectativas_fallidas": []
+        }
+      ]
+    },
+    {
+      "fuente": "personal_finance_ml",
+      "particiones": [
+        {
+          "fecha": "2026/09/01",
+          "filas_evaluadas": 32424,
+          "exito_global": true,
+          "expectativas_totales": 8,
+          "expectativas_exitosas": 8,
+          "expectativas_fallidas": []
+        },
+        {
+          "fecha": "2026/09/02",
+          "filas_evaluadas": 32424,
+          "exito_global": true,
+          "expectativas_totales": 8,
+          "expectativas_exitosas": 8,
+          "expectativas_fallidas": []
+        }
+      ]
+    }
+  ]
+}

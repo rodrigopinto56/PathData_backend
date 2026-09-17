@@ -1,0 +1,62 @@
+# config/silver_schema.yml
+#
+# Contrato de esquema de la Capa Silver - Gemelo Digital Financiero
+# Semana 10: formaliza en un solo lugar las reglas que hoy viven repartidas
+# entre dataCatalog.yml (documentacion) y bronze_to_silver.py (codigo).
+#
+# Este archivo es la fuente unica de verdad para:
+#   - la logica de limpieza en bronze_to_silver.py (Semana 9, ya implementada)
+#   - la deduplicacion (Semana 10, paso 2)
+#   - el Expectation Suite de Great Expectations (Semana 11, paso 4)
+
+fuentes:
+
+  loan_default_risk:
+    llave_deduplicacion: null   # sin columna identificadora unica (confirmado en profiling, Semana 5)
+    estrategia_dedup: "fila_completa"  # se deduplica solo si TODAS las columnas coinciden
+    columnas:
+      - nombre: Retirement_Age
+        tipo: double
+        nulable: false
+        regla: "> 0"
+      - nombre: Debt_Amount
+        tipo: double
+        nulable: false
+        regla: ">= 0"
+      - nombre: Monthly_Savings
+        tipo: double
+        nulable: false
+        regla: ">= 0"
+      - nombre: Loan_Default_Risk
+        tipo: integer
+        nulable: false
+        regla: "en {0, 1}"
+
+  personal_finance_ml:
+    llave_deduplicacion: user_id   # confirmado unico en profiling (32,424 valores unicos)
+    estrategia_dedup: "por_llave"  # si se repite user_id, se conserva un solo registro
+    columnas:
+      - nombre: user_id
+        tipo: string
+        nulable: false
+        regla: "no nulo y unico"
+      - nombre: monthly_income_usd
+        tipo: double
+        nulable: false
+        regla: ">= 0"
+      - nombre: has_loan
+        tipo: string
+        nulable: false
+        regla: "en {Si, No}"
+      - nombre: loan_type
+        tipo: string
+        nulable: true
+        regla: "nulo permitido SOLO si has_loan = 'No' (~60% de los casos, no es dato faltante)"
+      - nombre: credit_score
+        tipo: integer
+        nulable: false
+        regla: "entre 300 y 850"
+      - nombre: debt_to_income_ratio
+        tipo: double
+        nulable: true
+        regla: "outliers esperados (distribucion bimodal, ver notas_calidad en dataCatalog.yml)"

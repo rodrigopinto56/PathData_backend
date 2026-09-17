@@ -17,6 +17,8 @@ x-airflow-common: &airflow-common
     - ./plugins:/opt/airflow/plugins
     - ./data:/opt/airflow/data
     - ./src/spark:/opt/spark-apps
+    - ./scripts:/opt/airflow/scripts
+    - ./config:/opt/airflow/config
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     postgres:
@@ -104,6 +106,24 @@ services:
       - ./data:/opt/airflow/data
       - ./src/spark:/opt/spark-apps
     restart: always
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: streamlit_dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ROOT_USER: "admin"
+      MINIO_ROOT_PASSWORD: "password123"
+      SILVER_BUCKET: "silver-layer"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - minio
+    restart: unless-stopped
 
 volumes:
   postgres-db-volume:

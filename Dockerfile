@@ -23,4 +23,5 @@ RUN pip install --no-cache-dir \
     apache-airflow-providers-amazon \
     apache-airflow-providers-apache-spark==5.2.1 \
     pyspark==4.0.0 \
-    s3fs
+    s3fs \
+    great_expectations==0.18.19

@@ -17,6 +17,7 @@ data/bronze/
 data/tmp/
 data/reports/*.html
 data/reports/*.csv
+data/reports/*.jsonl
 !data/raw/manifest.json
 
 # ---------------------------------------------------------------------------
