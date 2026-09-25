@@ -51,10 +51,19 @@ def _fs() -> s3fs.S3FileSystem:
     que se refresca seguido, una conexion nueva evita que veamos datos
     viejos si el usuario aprieta 'rerun' en Streamlit.
     """
+    # Ojo: fsspec cachea las instancias de S3FileSystem por argumentos,
+    # asi que S3FileSystem(...) con las mismas credenciales regresa la
+    # MISMA conexion (con su cache de listados) en cada refresco. Cuando
+    # un DAG escribe archivos nuevos, ese listado viejo hace que
+    # fs.open() truene con FileNotFoundError aunque el archivo exista.
+    # skip_instance_cache + use_listings_cache=False fuerzan una conexion
+    # nueva y sin listados cacheados.
     return s3fs.S3FileSystem(
         key=MINIO_KEY,
         secret=MINIO_SECRET,
         client_kwargs={"endpoint_url": MINIO_ENDPOINT},
+        skip_instance_cache=True,
+        use_listings_cache=False,
     )
 
 
@@ -105,6 +114,18 @@ def _listar_archivos(sufijo: str, bucket: str = SILVER_BUCKET) -> list[str]:
     return [ruta for ruta in todas if ruta.endswith(sufijo)]
 
 
+def _leer_json(fs: s3fs.S3FileSystem, ruta: str) -> dict | None:
+    """Lee un JSON de MinIO. Si el archivo ya no existe (lo reescribio un
+    DAG entre el listado y la lectura) o esta corrupto, regresa None en
+    vez de tumbar todo el dashboard -- mismo criterio que las lineas
+    corruptas de pipeline_log.jsonl."""
+    try:
+        with fs.open(ruta, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
 def cargar_reportes_calidad() -> pd.DataFrame:
     """Recorre silver-layer, lee cada _calidad_reporte.json y regresa
     un DataFrame con una fila por particion (fuente + fecha)."""
@@ -113,8 +134,9 @@ def cargar_reportes_calidad() -> pd.DataFrame:
 
     filas = []
     for ruta in rutas:
-        with fs.open(ruta, "r") as f:
-            reporte = json.load(f)
+        reporte = _leer_json(fs, ruta)
+        if reporte is None:
+            continue
         filas.append(
             {
                 "fuente": reporte.get("fuente"),
@@ -143,8 +165,9 @@ def cargar_metadata_silver() -> pd.DataFrame:
 
     filas = []
     for ruta in rutas:
-        with fs.open(ruta, "r") as f:
-            metadata = json.load(f)
+        metadata = _leer_json(fs, ruta)
+        if metadata is None:
+            continue
         calidad = metadata.get("calidad", {})
         filas.append(
             {
@@ -173,8 +196,9 @@ def cargar_gold_metadata_modelo() -> pd.DataFrame:
 
     filas = []
     for ruta in rutas:
-        with fs.open(ruta, "r") as f:
-            metadata = json.load(f)
+        metadata = _leer_json(fs, ruta)
+        if metadata is None:
+            continue
         modelo = metadata.get("modelo", {})
         filas.append(
             {
@@ -258,4 +282,6 @@ def _storage_options() -> dict:
         "key": MINIO_KEY,
         "secret": MINIO_SECRET,
         "client_kwargs": {"endpoint_url": MINIO_ENDPOINT},
+        "skip_instance_cache": True,
+        "use_listings_cache": False,
     }
