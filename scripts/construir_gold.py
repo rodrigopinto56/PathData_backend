@@ -3,6 +3,14 @@ scripts/construir_gold.py
 
 Semana 11, Paso 3: construccion de las tablas Gold.
 
+Escribe dos grupos de tablas en gold-layer:
+  1) Modelo analitico normalizado (esquema estrella, ver
+     modelo_dimensional.py): dim_fecha, dim_cliente, dim_region,
+     dim_banda_credito, dim_tipo_prestamo y fact_posicion_financiera.
+     Es la base de los KPIs de la Semana 12 (kpis_financieros.py).
+  2) Tablas de consumo directo (desnormalizadas) que ya usa el dashboard:
+     gold_clientes_riesgo y gold_metricas_por_segmento.
+
 Por que pandas y no Spark aqui (a diferencia de bronze_to_silver.py):
 personal_finance_ml son ~32K filas. Levantar un job de Spark para esto
 es anadir un contenedor y un SparkSubmitOperator sin necesidad real de
@@ -21,6 +29,7 @@ import s3fs
 
 from modelo_riesgo import STORAGE_OPTIONS, MINIO_ENDPOINT, MINIO_KEY, MINIO_SECRET
 from modelo_riesgo import SILVER_BUCKET, entrenar_modelo, calificar_clientes
+from modelo_dimensional import construir_modelo_estrella, validar_integridad
 
 import os
 
@@ -79,6 +88,23 @@ def construir_gold_particion(fecha: str) -> dict:
     )
     df_calificado = calificar_clientes(df_pf, modelo)
 
+    # --- Modelo estrella (dimensiones + hechos) ---
+    # Se valida la integridad ANTES de escribir nada: si una FK queda
+    # huerfana o una PK se repite, es mejor que la tarea falle (y Airflow
+    # reintente / alerte) a publicar un modelo roto que alimente los KPIs.
+    tablas_estrella = construir_modelo_estrella(df_calificado, fecha)
+    integridad = validar_integridad(tablas_estrella)
+    if not integridad["exito_global"]:
+        fallidos = [c for c in integridad["detalle"] if not c["exito"]]
+        raise ValueError(f"Modelo estrella Gold con errores de integridad: {fallidos}")
+
+    for nombre_tabla, df_tabla in tablas_estrella.items():
+        df_tabla.to_parquet(
+            f"s3://{GOLD_BUCKET}/{nombre_tabla}/{fecha}/data.parquet",
+            storage_options=STORAGE_OPTIONS,
+            index=False,
+        )
+
     # --- Tabla 1: gold_clientes_riesgo (detalle por cliente) ---
     df_clientes = df_calificado[COLUMNAS_CLIENTES_RIESGO].copy()
     ruta_clientes = f"s3://{GOLD_BUCKET}/gold_clientes_riesgo/{fecha}/data.parquet"
@@ -126,6 +152,10 @@ def construir_gold_particion(fecha: str) -> dict:
         "fecha": fecha,
         "generado_en": datetime.now(timezone.utc).isoformat(),
         "modelo": metricas_modelo,
+        "modelo_estrella": {
+            nombre: {"filas": int(len(df_tabla))} for nombre, df_tabla in tablas_estrella.items()
+        },
+        "integridad_modelo_estrella": integridad,
         "gold_clientes_riesgo": {"filas": int(len(df_clientes))},
         "gold_metricas_por_segmento": {"filas": int(len(df_segmento))},
     }

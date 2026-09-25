@@ -49,3 +49,6 @@ frontend/dist/
 Thumbs.db
 .vscode/
 .ipynb_checkpoints/
+
+# Pruebas
+.pytest_cache/
