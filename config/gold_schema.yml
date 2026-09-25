@@ -110,3 +110,141 @@ bandas_credit_score:
     etiqueta: "Muy bueno"
   - rango: "800-850"
     etiqueta: "Excelente"
+
+# ===========================================================================
+# Semana 11 (cierre): modelo analitico normalizado -- esquema estrella
+# ===========================================================================
+# Implementacion: scripts/modelo_dimensional.py
+# Ruta en MinIO:  gold-layer/<tabla>/<YYYY/MM/DD>/data.parquet
+#
+#                   dim_fecha
+#                       |
+#   dim_cliente --- fact_posicion_financiera --- dim_region
+#                    /                 \
+#       dim_banda_credito        dim_tipo_prestamo
+#
+# gold_clientes_riesgo y gold_metricas_por_segmento (arriba) se mantienen
+# como tablas de consumo directo del dashboard; el modelo estrella es la
+# fuente normalizada sobre la que se calculan los KPIs de la Semana 12.
+modelo_dimensional:
+
+  dim_fecha:
+    grano: "una fila por fecha de particion"
+    llave_primaria: fecha_id            # entero YYYYMMDD
+    columnas: [fecha_id, fecha, anio, trimestre, mes, dia, dia_semana, semana_anio]
+
+  dim_cliente:
+    grano: "una fila por user_id"
+    llave_primaria: user_id             # llave natural, ya validada unica en Silver
+    columnas: [user_id, age, rango_edad, gender, employment_status]
+    columnas_opcionales: [education_level, job_title]   # si vienen en Silver
+    rangos_edad: ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"]
+
+  dim_region:
+    grano: "una fila por region"
+    llave_primaria: region_id           # surrogada, orden alfabetico (determinista)
+    columnas: [region_id, region]
+
+  dim_banda_credito:
+    grano: "una fila por banda de credit score (ver bandas_credit_score)"
+    llave_primaria: banda_id            # 1 = Bajo ... 5 = Excelente, 0 = Sin clasificar
+    columnas: [banda_id, rango_credit_score, score_min, score_max]
+
+  dim_tipo_prestamo:
+    grano: "una fila por tipo de prestamo"
+    llave_primaria: tipo_prestamo_id    # surrogada, orden alfabetico
+    columnas: [tipo_prestamo_id, tipo_prestamo]
+    nota: "loan_type nulo (has_loan = No) se mapea al miembro 'Sin prestamo', asi la FK nunca es nula."
+
+  fact_posicion_financiera:
+    grano: "una fila por cliente por fecha de particion (snapshot)"
+    llaves_foraneas:
+      fecha_id: dim_fecha
+      user_id: dim_cliente
+      region_id: dim_region
+      banda_id: dim_banda_credito
+      tipo_prestamo_id: dim_tipo_prestamo
+    medidas_base: [monthly_income_usd, monthly_expenses_usd, savings_usd, tiene_prestamo,
+                   loan_amount_usd, debt_to_income_ratio, credit_score]
+    medidas_opcionales: [loan_term_months, monthly_emi_usd, loan_interest_rate_pct]
+    medidas_modelo: [riesgo_score, es_riesgo_alto]
+    medidas_derivadas:
+      flujo_libre_mensual_usd: "monthly_income_usd - monthly_expenses_usd"
+      tasa_ahorro: "(monthly_income_usd - monthly_expenses_usd) / monthly_income_usd"
+      ratio_gasto_ingreso: "monthly_expenses_usd / monthly_income_usd"
+      meses_cobertura_ahorro: "savings_usd / monthly_expenses_usd"
+      perdida_esperada_usd: "riesgo_score (PD) x loan_amount_usd (EAD) x LGD"
+
+  integridad:
+    descripcion: >
+      construir_gold.py valida el modelo antes de escribirlo y falla la
+      tarea si algo no cumple (en vez de publicar un modelo roto).
+    reglas:
+      - "PK unica y no nula en cada dimension"
+      - "Toda FK de fact_posicion_financiera existe en su dimension (0 huerfanos)"
+      - "Grano unico en el hecho: (user_id, fecha_id)"
+
+
+# ===========================================================================
+# Semanas 11-12: metricas financieras y KPIs
+# ===========================================================================
+# Implementacion: scripts/kpis_financieros.py (catalogo CATALOGO_KPIS)
+# Salidas: gold_kpis_financieros (formato largo: fecha, categoria, kpi,
+#          valor, unidad, umbral, estado) y gold_kpis_por_segmento.
+parametros_financieros:
+  lgd: 0.45
+  razon_lgd: >
+    Loss Given Default supervisor de Basilea II (IRB basico) para deuda
+    senior sin garantia. No hay datos de recuperacion propios; si llegan,
+    se reemplaza por una LGD observada.
+  umbral_dti_alto: 0.43
+  razon_dti: >
+    Limite del CFPB (EE.UU.) para hipoteca "calificada". Supone que
+    debt_to_income_ratio viene como fraccion (0.43 = 43%); verificar la
+    escala contra el profiling de la Semana 5 si el KPI sale extremo.
+  meses_colchon_minimo: 3
+  umbral_perfil_ahorrador: 0.20   # regla 50/30/20
+
+metricas_financieras:
+
+  riesgo_financiero:
+    - {kpi: tasa_incumplimiento_historica_pct, formula: "mean(Loan_Default_Risk) x 100 en loan_default_risk", umbral: null}
+    - {kpi: probabilidad_incumplimiento_promedio_pct, formula: "mean(riesgo_score) x 100", umbral: "> 30 = ALERTA"}
+    - {kpi: pct_clientes_riesgo_alto, formula: "% es_riesgo_alto = 1", umbral: "> 20 = ALERTA"}
+    - {kpi: credit_score_promedio, formula: "mean(credit_score)", umbral: "< 670 = ALERTA"}
+    - {kpi: pct_clientes_subprime, formula: "% credit_score < 580", umbral: "> 20 = ALERTA"}
+    - {kpi: dti_mediana, formula: "median(debt_to_income_ratio) con prestamo", umbral: null}
+    - {kpi: pct_clientes_sobreendeudados, formula: "% con prestamo y DTI > umbral_dti_alto", umbral: "> 25 = ALERTA"}
+    - {kpi: auc_modelo_riesgo, formula: "AUC de LogisticRegression en test", umbral: "< 0.70 = ALERTA"}
+
+  exposicion:
+    - {kpi: num_prestamos_activos, formula: "sum(tiene_prestamo)", umbral: null}
+    - {kpi: pct_clientes_con_prestamo, formula: "% tiene_prestamo = 1", umbral: null}
+    - {kpi: exposicion_total_usd, formula: "sum(loan_amount_usd) con prestamo (EAD)", umbral: null}
+    - {kpi: exposicion_promedio_usd, formula: "exposicion_total / num_prestamos", umbral: null}
+    - {kpi: exposicion_riesgo_alto_usd, formula: "sum(loan_amount_usd) donde es_riesgo_alto = 1", umbral: null}
+    - {kpi: pct_exposicion_riesgo_alto, formula: "exposicion_riesgo_alto / exposicion_total x 100", umbral: "> 20 = ALERTA"}
+    - {kpi: perdida_esperada_usd, formula: "sum(PD x EAD x LGD)", umbral: null}
+    - {kpi: perdida_esperada_pct_exposicion, formula: "perdida_esperada / exposicion_total x 100", umbral: "> 5 = ALERTA"}
+    - {kpi: indice_concentracion_region_hhi, formula: "sum(participacion_region^2)", umbral: "> 0.25 = ALERTA"}
+    - {kpi: pct_exposicion_region_principal, formula: "max(exposicion_region) / exposicion_total x 100", umbral: null}
+
+  comportamiento_transaccional:
+    - {kpi: ingreso_mensual_promedio_usd, formula: "mean(monthly_income_usd)", umbral: null}
+    - {kpi: gasto_mensual_promedio_usd, formula: "mean(monthly_expenses_usd)", umbral: null}
+    - {kpi: ratio_gasto_ingreso_mediana, formula: "median(ratio_gasto_ingreso)", umbral: null}
+    - {kpi: tasa_ahorro_mediana_pct, formula: "median(tasa_ahorro) x 100", umbral: "< 20 = ALERTA"}
+    - {kpi: flujo_libre_mensual_mediana_usd, formula: "median(flujo_libre_mensual_usd)", umbral: null}
+    - {kpi: pct_clientes_deficitarios, formula: "% flujo_libre_mensual_usd < 0", umbral: "> 15 = ALERTA"}
+    - {kpi: meses_cobertura_ahorro_mediana, formula: "median(meses_cobertura_ahorro)", umbral: "< 3 = ALERTA"}
+    - {kpi: pct_clientes_sin_colchon, formula: "% meses_cobertura_ahorro < 3", umbral: "> 30 = ALERTA"}
+
+  nota_medianas: >
+    Para montos con cola larga (ahorro, flujo libre, cobertura) se usa la
+    mediana: el ahorro llega a cientos de miles de dolares en pocos
+    clientes y el promedio no representa al cliente tipico.
+
+  segmentacion:
+    tabla: gold_kpis_por_segmento
+    dimensiones: [region, rango_credit_score, tipo_prestamo, rango_edad, employment_status, perfil_ahorro]
+    perfil_ahorro: "Deficitario (tasa_ahorro < 0), Equilibrado (0-20%), Ahorrador (>= 20%)"

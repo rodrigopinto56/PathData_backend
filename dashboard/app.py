@@ -8,6 +8,8 @@ Estructura del archivo (de arriba a abajo):
   2) Vista 1: Salud de la malla     (Paso 4)
   3) Vista 2: Calidad de datos      (Paso 5)
   4) Vista 3: Riesgo de credito     (Semana 11 - capa Gold)
+  5) Vista 4: KPIs financieros      (Semana 12 - riesgo, exposicion,
+                                     comportamiento transaccional)
 
 Cada vista es una funcion aparte para que crezcan sin pisarse entre si.
 """
@@ -24,6 +26,8 @@ from data_loader import (
     cargar_gold_metadata_modelo,
     cargar_gold_metricas_segmento,
     cargar_gold_clientes_riesgo,
+    cargar_gold_kpis,
+    cargar_gold_kpis_segmento,
 )
 
 # --- Paleta fija del proyecto (misma en toda vista, nunca improvisada) ---
@@ -58,6 +62,25 @@ COLOR_BANDAS = {
     "Excelente": "#104281",
 }
 COLOR_RIESGO = {"Alto": "#d03b3b", "Bajo": "#0ca30c"}  # mismo par que 'nivel': es un status
+
+# Vista 4: 'estado' de un KPI es un status (mismo verde/rojo de siempre);
+# INFO = KPI sin umbral, solo informativo.
+COLOR_ESTADO_KPI = {"OK": "#0ca30c", "ALERTA": "#d03b3b", "INFO": TEXTO_SECUNDARIO}
+# Exposicion vs perdida esperada: dos medidas distintas en la misma
+# unidad (USD) -> categoricos slot 1 y slot 2.
+COLOR_MEDIDA_USD = {"Exposicion": "#3987e5", "Perdida esperada": "#d95926"}
+ORDEN_PERFIL_AHORRO = ["Deficitario", "Equilibrado", "Ahorrador", "Sin ingreso"]
+COLOR_PERFIL_AHORRO = {
+    "Deficitario": "#d03b3b",
+    "Equilibrado": "#c3c2b7",
+    "Ahorrador": "#0ca30c",
+    "Sin ingreso": "#383835",
+}
+TITULOS_CATEGORIA_KPI = {
+    "riesgo_financiero": "Riesgo financiero",
+    "exposicion": "Exposicion",
+    "comportamiento_transaccional": "Comportamiento transaccional",
+}
 
 st.set_page_config(page_title="Gemelo Digital Financiero - Dashboard", layout="wide")
 
@@ -94,6 +117,16 @@ def _gold_segmento_cacheado() -> pd.DataFrame:
 @st.cache_data(ttl=30)
 def _gold_clientes_cacheados() -> pd.DataFrame:
     return cargar_gold_clientes_riesgo()
+
+
+@st.cache_data(ttl=30)
+def _gold_kpis_cacheados() -> pd.DataFrame:
+    return cargar_gold_kpis()
+
+
+@st.cache_data(ttl=30)
+def _gold_kpis_segmento_cacheados() -> pd.DataFrame:
+    return cargar_gold_kpis_segmento()
 
 
 def _tema_oscuro(fig, mostrar_leyenda: bool = True):
@@ -414,7 +447,166 @@ def seccion_riesgo_credito() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5) Resumen ejecutivo / storytelling (Paso 6)
+# 5) Vista 4: KPIs financieros (Semana 12)
+# ---------------------------------------------------------------------------
+def _formatear_kpi(valor, unidad: str) -> str:
+    if valor is None or pd.isna(valor):
+        return "N/D"
+    if unidad == "USD":
+        if abs(valor) >= 1_000_000:
+            return f"${valor / 1_000_000:,.1f} M"
+        return f"${valor:,.0f}"
+    if unidad == "%":
+        return f"{valor:.1f}%"
+    if unidad == "indice 0-1":
+        return f"{valor:.3f}"
+    if unidad == "ratio":
+        return f"{valor:.2f}"
+    if unidad == "meses":
+        return f"{valor:.1f} meses"
+    return f"{valor:,.0f}"
+
+
+def seccion_kpis_financieros() -> None:
+    st.header("Vista 4 - KPIs financieros (Gold)")
+    st.caption(
+        "De donde sale esto: la tarea calcular_kpis de transformacion_gold_dag "
+        "agrega fact_posicion_financiera (modelo estrella de Gold) en tres "
+        "familias de KPIs. Formulas y umbrales en config/gold_schema.yml, "
+        "seccion metricas_financieras."
+    )
+
+    kpis = _gold_kpis_cacheados()
+    segmentos = _gold_kpis_segmento_cacheados()
+
+    if kpis.empty:
+        st.info(
+            "Todavia no hay KPIs en Gold. Corre transformacion_gold_dag "
+            "(tarea calcular_kpis) para ver datos aqui."
+        )
+        return
+
+    fechas = sorted(kpis["fecha"].unique(), reverse=True)
+    fecha = st.selectbox("Particion", fechas, index=0, key="fecha_kpis")
+    kpis_fecha = kpis[kpis["fecha"] == fecha]
+
+    # --- Semaforo: primero lo que requiere accion ---
+    en_alerta = kpis_fecha[kpis_fecha["estado"] == "ALERTA"]
+    con_umbral = kpis_fecha[kpis_fecha["estado"] != "INFO"]
+    if en_alerta.empty:
+        st.success(f"Los {len(con_umbral)} KPIs con umbral estan dentro de rango.")
+    else:
+        st.warning(
+            f"{len(en_alerta)} de {len(con_umbral)} KPIs con umbral estan en ALERTA: "
+            + ", ".join(en_alerta["kpi"].tolist())
+        )
+
+    # --- Numeros grandes por familia ---
+    # El delta muestra la distancia al umbral (no un cambio vs. ayer):
+    # rojo = del lado malo del umbral, verde = del lado bueno.
+    for categoria, titulo in TITULOS_CATEGORIA_KPI.items():
+        st.subheader(titulo)
+        del_grupo = kpis_fecha[kpis_fecha["categoria"] == categoria]
+        columnas = st.columns(4)
+        for i, fila in enumerate(del_grupo.itertuples()):
+            delta = None
+            if fila.estado in ("OK", "ALERTA") and pd.notna(fila.umbral):
+                delta = f"{'fuera de' if fila.estado == 'ALERTA' else 'dentro de'} umbral ({_formatear_kpi(fila.umbral, fila.unidad)})"
+            columnas[i % 4].metric(
+                fila.kpi.replace("_", " "),
+                _formatear_kpi(fila.valor, fila.unidad),
+                delta=delta,
+                delta_color="inverse" if fila.estado == "ALERTA" else "normal",
+                help=fila.descripcion,
+            )
+
+    if segmentos.empty:
+        return
+    seg_fecha = segmentos[segmentos["fecha"] == fecha]
+
+    # --- Exposicion vs perdida esperada por region ---
+    # Barras agrupadas: misma unidad (USD), se compara cuanto de lo
+    # prestado en cada region se espera perder.
+    por_region = seg_fecha[seg_fecha["dimension"] == "region"].melt(
+        id_vars="segmento",
+        value_vars=["exposicion_usd", "perdida_esperada_usd"],
+        var_name="medida",
+        value_name="usd",
+    )
+    por_region["medida"] = por_region["medida"].map(
+        {"exposicion_usd": "Exposicion", "perdida_esperada_usd": "Perdida esperada"}
+    )
+    st.subheader("Exposicion y perdida esperada por region")
+    fig_region = px.bar(
+        por_region,
+        x="segmento",
+        y="usd",
+        color="medida",
+        barmode="group",
+        color_discrete_map=COLOR_MEDIDA_USD,
+        labels={"segmento": "Region", "usd": "USD", "medida": ""},
+    )
+    st.plotly_chart(_tema_oscuro(fig_region), use_container_width=True)
+
+    # --- Riesgo por banda de credit score (validacion de negocio) ---
+    por_banda = seg_fecha[seg_fecha["dimension"] == "rango_credit_score"].copy()
+    por_banda = por_banda[por_banda["segmento"].isin(ORDEN_BANDAS)]
+    por_banda["segmento"] = pd.Categorical(por_banda["segmento"], categories=ORDEN_BANDAS, ordered=True)
+    por_banda = por_banda.sort_values("segmento")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Perdida esperada / exposicion por banda")
+        fig_banda = px.bar(
+            por_banda,
+            x="segmento",
+            y="perdida_esperada_pct_exposicion",
+            text=por_banda["perdida_esperada_pct_exposicion"].round(1).astype(str) + "%",
+            labels={"segmento": "Banda de credit score", "perdida_esperada_pct_exposicion": "% de la exposicion"},
+        )
+        fig_banda.update_traces(marker_color=COLOR_BANDAS["Excelente"], textposition="outside")
+        st.plotly_chart(_tema_oscuro(fig_banda, mostrar_leyenda=False), use_container_width=True)
+
+    # --- Comportamiento transaccional: perfil de ahorro ---
+    with col2:
+        st.subheader("Clientes por perfil de ahorro")
+        por_perfil = seg_fecha[seg_fecha["dimension"] == "perfil_ahorro"]
+        fig_perfil = px.bar(
+            por_perfil,
+            x="segmento",
+            y="num_clientes",
+            color="segmento",
+            category_orders={"segmento": ORDEN_PERFIL_AHORRO},
+            color_discrete_map=COLOR_PERFIL_AHORRO,
+            text="num_clientes",
+            labels={"segmento": "Perfil", "num_clientes": "Clientes"},
+        )
+        fig_perfil.update_traces(textposition="outside")
+        st.plotly_chart(_tema_oscuro(fig_perfil, mostrar_leyenda=False), use_container_width=True)
+
+    # --- Detalle por segmento (para bajar al "donde") ---
+    st.subheader("KPIs por segmento")
+    dimension = st.selectbox(
+        "Dimension",
+        sorted(seg_fecha["dimension"].unique()),
+        key="dimension_kpis",
+    )
+    columnas_tabla = [
+        "segmento", "num_clientes", "pct_riesgo_alto", "pd_promedio_pct",
+        "exposicion_usd", "pct_exposicion_del_total", "perdida_esperada_usd",
+        "tasa_ahorro_mediana_pct", "pct_deficitarios",
+    ]
+    st.dataframe(
+        seg_fecha[seg_fecha["dimension"] == dimension][columnas_tabla].sort_values(
+            "exposicion_usd", ascending=False
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 6) Resumen ejecutivo / storytelling (Paso 6)
 # ---------------------------------------------------------------------------
 def seccion_resumen_ejecutivo() -> None:
     """Interpreta en texto lo que ya calculamos en las dos vistas.
@@ -427,8 +619,9 @@ def seccion_resumen_ejecutivo() -> None:
     eventos = _eventos_cacheados()
     reportes = _reportes_cacheados()
     gold_metadata = _gold_metadata_cacheada()
+    kpis = _gold_kpis_cacheados()
 
-    if eventos.empty and reportes.empty and gold_metadata.empty:
+    if eventos.empty and reportes.empty and gold_metadata.empty and kpis.empty:
         st.info("Corre un backfill para que aparezca el resumen ejecutivo.")
         return
 
@@ -479,6 +672,35 @@ def seccion_resumen_ejecutivo() -> None:
             f"clientes calificados."
         )
 
+    if not kpis.empty:
+        ultima_fecha = kpis["fecha"].max()
+        ultimos = kpis[kpis["fecha"] == ultima_fecha].set_index("kpi")
+        alertas = ultimos[ultimos["estado"] == "ALERTA"].index.tolist()
+
+        def _v(kpi: str):
+            return ultimos["valor"].get(kpi)
+
+        exposicion = _v("exposicion_total_usd")
+        perdida = _v("perdida_esperada_usd")
+        if exposicion is not None and perdida is not None:
+            puntos.append(
+                f"**Exposicion ({ultima_fecha}):** {_formatear_kpi(exposicion, 'USD')} prestados, "
+                f"perdida esperada de {_formatear_kpi(perdida, 'USD')} "
+                f"({_formatear_kpi(_v('perdida_esperada_pct_exposicion'), '%')} de la cartera); "
+                f"{_formatear_kpi(_v('pct_exposicion_riesgo_alto'), '%')} del saldo esta en clientes de riesgo alto."
+            )
+        puntos.append(
+            f"**Comportamiento:** tasa de ahorro mediana de "
+            f"{_formatear_kpi(_v('tasa_ahorro_mediana_pct'), '%')} y "
+            f"{_formatear_kpi(_v('pct_clientes_deficitarios'), '%')} de clientes gastan mas de lo que ingresan."
+        )
+        if alertas:
+            puntos.append(
+                f"**KPIs en ALERTA ({len(alertas)}):** {', '.join(alertas)} - ver Vista 4."
+            )
+        else:
+            puntos.append("**KPIs financieros:** todos los KPIs con umbral estan dentro de rango.")
+
     st.subheader("Resumen ejecutivo")
     for punto in puntos:
         st.markdown(f"- {punto}")
@@ -495,3 +717,5 @@ st.divider()
 seccion_calidad_datos()
 st.divider()
 seccion_riesgo_credito()
+st.divider()
+seccion_kpis_financieros()

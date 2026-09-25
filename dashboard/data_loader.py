@@ -222,6 +222,37 @@ def cargar_gold_clientes_riesgo() -> pd.DataFrame:
     return pd.concat(partes, ignore_index=True)
 
 
+def _cargar_particiones_gold(tabla: str) -> pd.DataFrame:
+    """Lee todas las particiones (fechas) de una tabla de gold-layer y
+    las junta en un solo DataFrame."""
+    fs = _fs()
+    prefijo = f"{GOLD_BUCKET}/{tabla}/"
+    if not fs.exists(prefijo):
+        return pd.DataFrame()
+
+    rutas_parquet = [r for r in fs.find(prefijo) if r.endswith(".parquet")]
+    if not rutas_parquet:
+        return pd.DataFrame()
+
+    partes = [pd.read_parquet(f"s3://{r}", storage_options=_storage_options()) for r in rutas_parquet]
+    return pd.concat(partes, ignore_index=True)
+
+
+# ---------------------------------------------------------------------------
+# KPIs financieros (Semana 12) -- ver scripts/kpis_financieros.py
+# ---------------------------------------------------------------------------
+def cargar_gold_kpis() -> pd.DataFrame:
+    """gold_kpis_financieros de todas las fechas: un renglon por KPI por
+    fecha (categoria, kpi, valor, unidad, umbral, estado)."""
+    return _cargar_particiones_gold("gold_kpis_financieros")
+
+
+def cargar_gold_kpis_segmento() -> pd.DataFrame:
+    """gold_kpis_por_segmento de todas las fechas: un renglon por
+    (fecha, dimension, segmento)."""
+    return _cargar_particiones_gold("gold_kpis_por_segmento")
+
+
 def _storage_options() -> dict:
     return {
         "key": MINIO_KEY,
