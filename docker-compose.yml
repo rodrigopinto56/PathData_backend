@@ -11,6 +11,8 @@ x-airflow-common: &airflow-common
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
     BRONZE_BACKEND: "minio"
     BRONZE_BUCKET: "bronze-layer"
+    SILVER_BUCKET: "silver-layer"
+    GOLD_BUCKET: "gold-layer"
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -119,6 +121,7 @@ services:
       MINIO_ROOT_USER: "admin"
       MINIO_ROOT_PASSWORD: "password123"
       SILVER_BUCKET: "silver-layer"
+      GOLD_BUCKET: "gold-layer"
     volumes:
       - ./data:/app/data
     depends_on:

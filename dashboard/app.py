@@ -6,7 +6,8 @@ Semana 10: Dashboard de Calidad - Gemelo Digital Financiero.
 Estructura del archivo (de arriba a abajo):
   1) Chequeo de configuracion       (Paso 2 - "hola mundo")
   2) Vista 1: Salud de la malla     (Paso 4)
-  3) Vista 2: Calidad de datos      (Paso 5 - todavia no)
+  3) Vista 2: Calidad de datos      (Paso 5)
+  4) Vista 3: Riesgo de credito     (Semana 11 - capa Gold)
 
 Cada vista es una funcion aparte para que crezcan sin pisarse entre si.
 """
@@ -17,7 +18,13 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from data_loader import cargar_eventos_pipeline, cargar_reportes_calidad
+from data_loader import (
+    cargar_eventos_pipeline,
+    cargar_reportes_calidad,
+    cargar_gold_metadata_modelo,
+    cargar_gold_metricas_segmento,
+    cargar_gold_clientes_riesgo,
+)
 
 # --- Paleta fija del proyecto (misma en toda vista, nunca improvisada) ---
 # Tokens en modo oscuro, porque el tema por default de Streamlit es oscuro.
@@ -39,6 +46,19 @@ COLOR_SERIE_PRINCIPAL = "#3987e5"  # slot 1 categorico, paso oscuro
 COLOR_FUENTE = {"loan_default_risk": "#3987e5", "personal_finance_ml": "#d95926"}
 UMBRAL_CALIDAD_OK = 95.0  # % minimo antes de considerar una particion en riesgo
 
+# 'rango_credit_score' SI tiene un orden (Bajo -> Excelente), por eso usa
+# una rampa secuencial de un solo tono (mas oscuro = mejor score) en vez de
+# colores categoricos sin relacion entre si -- ver gold_schema.yml.
+ORDEN_BANDAS = ["Bajo", "Regular", "Bueno", "Muy bueno", "Excelente"]
+COLOR_BANDAS = {
+    "Bajo": "#86b6ef",
+    "Regular": "#5598e7",
+    "Bueno": "#2a78d6",
+    "Muy bueno": "#1c5cab",
+    "Excelente": "#104281",
+}
+COLOR_RIESGO = {"Alto": "#d03b3b", "Bajo": "#0ca30c"}  # mismo par que 'nivel': es un status
+
 st.set_page_config(page_title="Gemelo Digital Financiero - Dashboard", layout="wide")
 
 st.title("Dashboard de Calidad - Gemelo Digital Financiero")
@@ -59,6 +79,21 @@ def _eventos_cacheados() -> pd.DataFrame:
 @st.cache_data(ttl=30)
 def _reportes_cacheados() -> pd.DataFrame:
     return cargar_reportes_calidad()
+
+
+@st.cache_data(ttl=30)
+def _gold_metadata_cacheada() -> pd.DataFrame:
+    return cargar_gold_metadata_modelo()
+
+
+@st.cache_data(ttl=30)
+def _gold_segmento_cacheado() -> pd.DataFrame:
+    return cargar_gold_metricas_segmento()
+
+
+@st.cache_data(ttl=30)
+def _gold_clientes_cacheados() -> pd.DataFrame:
+    return cargar_gold_clientes_riesgo()
 
 
 def _tema_oscuro(fig, mostrar_leyenda: bool = True):
@@ -283,7 +318,103 @@ def seccion_calidad_datos() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4) Resumen ejecutivo / storytelling (Paso 6)
+# 4) Vista 3: Riesgo de credito (Semana 11, capa Gold)
+# ---------------------------------------------------------------------------
+def seccion_riesgo_credito() -> None:
+    st.header("Vista 3 - Riesgo de credito (Gold)")
+    st.caption(
+        "De donde sale esto: transformacion_gold_dag entrena un modelo "
+        "sobre loan_default_risk y califica a cada cliente de "
+        "personal_finance_ml. Ver config/gold_schema.yml para el diseno "
+        "completo (por que estas 2 variables, por que se excluyo la 3ra)."
+    )
+
+    metadata = _gold_metadata_cacheada()
+    df_segmento = _gold_segmento_cacheado()
+    df_clientes = _gold_clientes_cacheados()
+
+    if metadata.empty or df_segmento.empty:
+        st.info(
+            "Todavia no hay tablas Gold. Corre un backfill de "
+            "transformacion_gold_dag para ver datos aqui."
+        )
+        return
+
+    # --- KPIs: que tan bueno es el modelo + cuantos clientes en riesgo ---
+    ultima_corrida = metadata.sort_values("fecha").iloc[-1]
+    total_clientes = int(df_segmento["num_clientes"].sum())
+    clientes_riesgo_alto = (
+        int((df_clientes["riesgo_flag"] == "Alto").sum()) if not df_clientes.empty else None
+    )
+    pct_riesgo_alto = (
+        round(clientes_riesgo_alto / total_clientes * 100, 1)
+        if clientes_riesgo_alto is not None and total_clientes
+        else None
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Clientes calificados", f"{total_clientes:,}")
+    col2.metric("% en riesgo alto", f"{pct_riesgo_alto}%" if pct_riesgo_alto is not None else "N/D")
+    col3.metric("Accuracy del modelo", f"{ultima_corrida['accuracy']:.0%}")
+    col4.metric("AUC del modelo", f"{ultima_corrida['auc']:.3f}")
+
+    # --- % de riesgo alto por banda de credit score (ordinal) ---
+    # Aqui es donde se valida si el modelo tiene sentido de negocio: se
+    # espera que el riesgo BAJE conforme el score SUBE. Si esta grafica
+    # sale plana o al reves, es señal de que algo esta mal en el modelo,
+    # no solo un numero mas.
+    riesgo_por_banda = (
+        df_segmento.groupby("rango_credit_score")
+        .apply(
+            lambda g: pd.Series(
+                {
+                    "clientes": g["num_clientes"].sum(),
+                    "riesgo_alto_ponderado": (g["pct_riesgo_alto"] * g["num_clientes"]).sum()
+                    / g["num_clientes"].sum(),
+                }
+            )
+        )
+        .reset_index()
+    )
+    riesgo_por_banda["rango_credit_score"] = pd.Categorical(
+        riesgo_por_banda["rango_credit_score"], categories=ORDEN_BANDAS, ordered=True
+    )
+    riesgo_por_banda = riesgo_por_banda.sort_values("rango_credit_score")
+
+    fig_banda = px.bar(
+        riesgo_por_banda,
+        x="rango_credit_score",
+        y="riesgo_alto_ponderado",
+        text=riesgo_por_banda["riesgo_alto_ponderado"].round(1).astype(str) + "%",
+        labels={"rango_credit_score": "Banda de credit score", "riesgo_alto_ponderado": "% riesgo alto"},
+    )
+    fig_banda.update_traces(marker_color=COLOR_BANDAS["Excelente"], textposition="outside")
+    fig_banda.update_yaxes(range=[0, max(60, riesgo_por_banda["riesgo_alto_ponderado"].max() * 1.2)])
+    st.plotly_chart(_tema_oscuro(fig_banda, mostrar_leyenda=False), use_container_width=True)
+
+    # --- Distribucion de clientes por region, segmentada por banda ---
+    fig_region = px.bar(
+        df_segmento,
+        x="region",
+        y="num_clientes",
+        color="rango_credit_score",
+        category_orders={"rango_credit_score": ORDEN_BANDAS},
+        color_discrete_map=COLOR_BANDAS,
+        barmode="stack",
+        labels={"region": "Region", "num_clientes": "Clientes", "rango_credit_score": "Banda"},
+    )
+    st.plotly_chart(_tema_oscuro(fig_region), use_container_width=True)
+
+    # --- Top 10 clientes de mayor riesgo (para saber a quien revisar primero) ---
+    if not df_clientes.empty:
+        st.subheader("Top 10 clientes de mayor riesgo")
+        columnas = ["user_id", "region", "credit_score", "loan_amount_usd", "riesgo_score", "riesgo_flag"]
+        top_riesgo = df_clientes.sort_values("riesgo_score", ascending=False).head(10)
+        st.dataframe(top_riesgo[columnas], use_container_width=True, hide_index=True)
+
+
+# ---------------------------------------------------------------------------
+# 5) Resumen ejecutivo / storytelling (Paso 6)
 # ---------------------------------------------------------------------------
 def seccion_resumen_ejecutivo() -> None:
     """Interpreta en texto lo que ya calculamos en las dos vistas.
@@ -295,8 +426,9 @@ def seccion_resumen_ejecutivo() -> None:
     """
     eventos = _eventos_cacheados()
     reportes = _reportes_cacheados()
+    gold_metadata = _gold_metadata_cacheada()
 
-    if eventos.empty and reportes.empty:
+    if eventos.empty and reportes.empty and gold_metadata.empty:
         st.info("Corre un backfill para que aparezca el resumen ejecutivo.")
         return
 
@@ -338,6 +470,15 @@ def seccion_resumen_ejecutivo() -> None:
                 f"'Particiones con expectativas fallidas'."
             )
 
+    if not gold_metadata.empty:
+        ultima = gold_metadata.sort_values("fecha").iloc[-1]
+        puntos.append(
+            f"**Modelo de riesgo:** entrenado sobre {int(ultima['filas_entrenamiento'])} "
+            f"casos, accuracy {ultima['accuracy']:.0%} y AUC {ultima['auc']:.3f} en la "
+            f"corrida mas reciente ({ultima['fecha']}) - {int(ultima['clientes_calificados']):,} "
+            f"clientes calificados."
+        )
+
     st.subheader("Resumen ejecutivo")
     for punto in puntos:
         st.markdown(f"- {punto}")
@@ -352,3 +493,5 @@ st.divider()
 seccion_salud_malla()
 st.divider()
 seccion_calidad_datos()
+st.divider()
+seccion_riesgo_credito()

@@ -1,0 +1,112 @@
+# ---------------------------------------------------------------------------
+# Modelo de riesgo de incumplimiento
+# ---------------------------------------------------------------------------
+modelo_riesgo:
+  algoritmo: "LogisticRegression (scikit-learn)"
+  razon_algoritmo: >
+    Con solo 2 variables predictoras y ~300 filas de entrenamiento, un
+    modelo lineal simple es mas apropiado que uno complejo (menor riesgo
+    de sobreajuste, y los coeficientes son interpretables: se puede
+    explicar en una frase que tanto pesa cada variable en el riesgo).
+
+  entrena_sobre: loan_default_risk
+  target: Loan_Default_Risk   
+
+  features:
+    - nombre_entrenamiento: Debt_Amount
+      nombre_en_personal_finance_ml: loan_amount_usd
+      justificacion: "Ambas son montos de deuda/prestamo en dolares (misma unidad y escala)."
+    - nombre_entrenamiento: Monthly_Savings
+      nombre_en_personal_finance_ml: savings_usd
+      justificacion: "Ambas representan ahorro del usuario (dataCatalog.yml ya documentaba esta equivalencia)."
+
+  feature_excluida:
+    nombre: Retirement_Age
+    razon: >
+      No existe una columna equivalente confirmada en personal_finance_ml
+      ('age' es edad actual, no edad de retiro planeada - son conceptos
+      distintos). Decision (confirmada con el equipo): excluirla del
+      modelo en vez de inventar un mapeo. El modelo queda con 2 features
+      en lugar de 3. Si en el futuro se agrega una columna real de edad
+      de retiro planeada, se puede reincorporar sin cambiar el resto del
+      diseno.
+
+  aplica_sobre: personal_finance_ml   
+  salida_inferencia:
+    - nombre: riesgo_score
+      tipo: double
+      descripcion: "Probabilidad de incumplimiento estimada por el modelo (0.0 a 1.0)."
+    - nombre: riesgo_flag
+      tipo: string
+      descripcion: "'Alto' si riesgo_score >= 0.5, 'Bajo' en caso contrario."
+
+  nota_limitacion: >
+    El modelo se re-entrena en cada corrida del DAG, sobre la particion
+    de loan_default_risk del dia (no hay registro/versionado de modelo
+    todavia). Es una simplificacion valida para el alcance de esta
+    semana; un pipeline de ML en produccion normalmente separa
+    entrenamiento (con su propio ciclo de vida y evaluacion) de
+    inferencia (que reusa un modelo ya versionado). Se documenta como
+    mejora futura.
+
+# ---------------------------------------------------------------------------
+# Tablas Gold
+# ---------------------------------------------------------------------------
+tablas:
+
+  gold_clientes_riesgo:
+    grano: "un renglon por user_id (particionado por fecha, igual que Silver)"
+    descripcion: >
+      Perfil financiero de cada cliente enriquecido con su score de
+      riesgo. Es la tabla de detalle: sirve para responder "que clientes
+      estan en riesgo alto" o para alimentar un CRM/BI a nivel individual.
+    columnas_origen_silver:
+      - user_id
+      - age
+      - gender
+      - region
+      - employment_status
+      - monthly_income_usd
+      - monthly_expenses_usd
+      - savings_usd
+      - has_loan
+      - loan_amount_usd
+      - debt_to_income_ratio
+      - credit_score
+    columnas_calculadas:
+      - riesgo_score
+      - riesgo_flag
+
+  gold_metricas_por_segmento:
+    grano: "una fila por region x rango_credit_score (particionado por fecha)"
+    descripcion: >
+      Metricas de negocio agregadas, listas para dashboard/BI. No es
+      detalle por cliente, es la vista "resumen ejecutivo" de la capa Gold.
+    dimensiones:
+      - region
+      - rango_credit_score   
+    metricas:
+      - nombre: num_clientes
+        calculo: "conteo de user_id"
+      - nombre: ingreso_promedio_usd
+        calculo: "promedio de monthly_income_usd"
+      - nombre: ahorro_promedio_usd
+        calculo: "promedio de savings_usd"
+      - nombre: pct_con_prestamo
+        calculo: "% de filas con has_loan = 'Yes'"
+      - nombre: deuda_ingreso_promedio
+        calculo: "promedio de debt_to_income_ratio"
+      - nombre: pct_riesgo_alto
+        calculo: "% de filas con riesgo_flag = 'Alto'"
+
+bandas_credit_score:
+  - rango: "300-579"
+    etiqueta: "Bajo"
+  - rango: "580-669"
+    etiqueta: "Regular"
+  - rango: "670-739"
+    etiqueta: "Bueno"
+  - rango: "740-799"
+    etiqueta: "Muy bueno"
+  - rango: "800-850"
+    etiqueta: "Excelente"
