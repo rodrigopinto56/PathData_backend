@@ -66,6 +66,10 @@ COLOR_RIESGO = {"Alto": "#d03b3b", "Bajo": "#0ca30c"}  # mismo par que 'nivel': 
 # Vista 4: 'estado' de un KPI es un status (mismo verde/rojo de siempre);
 # INFO = KPI sin umbral, solo informativo.
 COLOR_ESTADO_KPI = {"OK": "#0ca30c", "ALERTA": "#d03b3b", "INFO": TEXTO_SECUNDARIO}
+# Semaforo del indice de riesgo consolidado: es un status ordenado
+# (verde -> amarillo -> rojo), no categorias sin relacion.
+ORDEN_SEMAFORO = ["Bajo", "Medio", "Alto"]
+COLOR_SEMAFORO = {"Bajo": "#0ca30c", "Medio": "#e6a700", "Alto": "#d03b3b"}
 # Exposicion vs perdida esperada: dos medidas distintas en la misma
 # unidad (USD) -> categoricos slot 1 y slot 2.
 COLOR_MEDIDA_USD = {"Exposicion": "#3987e5", "Perdida esperada": "#d95926"}
@@ -77,6 +81,7 @@ COLOR_PERFIL_AHORRO = {
     "Sin ingreso": "#383835",
 }
 TITULOS_CATEGORIA_KPI = {
+    "kpis_negocio": "KPIs de negocio",
     "riesgo_financiero": "Riesgo financiero",
     "exposicion": "Exposicion",
     "comportamiento_transaccional": "Comportamiento transaccional",
@@ -462,6 +467,8 @@ def _formatear_kpi(valor, unidad: str) -> str:
         return f"{valor:.3f}"
     if unidad == "ratio":
         return f"{valor:.2f}"
+    if unidad == "puntos 0-100":
+        return f"{valor:.1f} / 100"
     if unidad == "meses":
         return f"{valor:.1f} meses"
     return f"{valor:,.0f}"
@@ -492,7 +499,7 @@ def seccion_kpis_financieros() -> None:
 
     # --- Semaforo: primero lo que requiere accion ---
     en_alerta = kpis_fecha[kpis_fecha["estado"] == "ALERTA"]
-    con_umbral = kpis_fecha[kpis_fecha["estado"] != "INFO"]
+    con_umbral = kpis_fecha[kpis_fecha["estado"].isin(["OK", "ALERTA"])]
     if en_alerta.empty:
         st.success(f"Los {len(con_umbral)} KPIs con umbral estan dentro de rango.")
     else:
@@ -512,17 +519,44 @@ def seccion_kpis_financieros() -> None:
             delta = None
             if fila.estado in ("OK", "ALERTA") and pd.notna(fila.umbral):
                 delta = f"{'fuera de' if fila.estado == 'ALERTA' else 'dentro de'} umbral ({_formatear_kpi(fila.umbral, fila.unidad)})"
+            elif fila.estado == "SIN_DATOS":
+                delta = "sin datos - ver ayuda (?)"
             columnas[i % 4].metric(
                 fila.kpi.replace("_", " "),
                 _formatear_kpi(fila.valor, fila.unidad),
                 delta=delta,
-                delta_color="inverse" if fila.estado == "ALERTA" else "normal",
+                delta_color={"ALERTA": "inverse", "SIN_DATOS": "off"}.get(fila.estado, "normal"),
                 help=fila.descripcion,
             )
 
     if segmentos.empty:
         return
     seg_fecha = segmentos[segmentos["fecha"] == fecha]
+
+    # --- Semaforo del indice de riesgo consolidado ---
+    # Barra horizontal apilada al 100%: responde "que parte de la
+    # cartera esta en verde / amarillo / rojo" de un vistazo.
+    por_semaforo = seg_fecha[
+        (seg_fecha["dimension"] == "nivel_riesgo_consolidado") & seg_fecha["segmento"].isin(ORDEN_SEMAFORO)
+    ].copy()
+    if not por_semaforo.empty:
+        st.subheader("Semaforo del indice de riesgo consolidado")
+        por_semaforo["pct"] = por_semaforo["num_clientes"] / por_semaforo["num_clientes"].sum() * 100
+        por_semaforo["cartera"] = "Clientes"
+        fig_semaforo = px.bar(
+            por_semaforo,
+            x="pct",
+            y="cartera",
+            color="segmento",
+            orientation="h",
+            category_orders={"segmento": ORDEN_SEMAFORO},
+            color_discrete_map=COLOR_SEMAFORO,
+            text=por_semaforo["pct"].round(1).astype(str) + "%",
+            labels={"pct": "% de clientes", "cartera": "", "segmento": "Riesgo"},
+        )
+        fig_semaforo.update_layout(height=180)
+        fig_semaforo.update_xaxes(range=[0, 100])
+        st.plotly_chart(_tema_oscuro(fig_semaforo), use_container_width=True)
 
     # --- Exposicion vs perdida esperada por region ---
     # Barras agrupadas: misma unidad (USD), se compara cuanto de lo
@@ -592,10 +626,15 @@ def seccion_kpis_financieros() -> None:
         key="dimension_kpis",
     )
     columnas_tabla = [
-        "segmento", "num_clientes", "pct_riesgo_alto", "pd_promedio_pct",
+        "segmento", "num_clientes", "indice_riesgo_promedio", "pct_semaforo_alto",
+        "endeudamiento_mensual_mediana_pct", "tasa_ahorro_ic95_inf_pct", "tasa_ahorro_ic95_sup_pct",
+        "pct_riesgo_alto", "pd_promedio_pct",
         "exposicion_usd", "pct_exposicion_del_total", "perdida_esperada_usd",
         "tasa_ahorro_mediana_pct", "pct_deficitarios",
     ]
+    # Particiones calculadas con una version anterior no traen todas las
+    # columnas: se muestran solo las que existen en vez de tronar.
+    columnas_tabla = [c for c in columnas_tabla if c in seg_fecha.columns]
     st.dataframe(
         seg_fecha[seg_fecha["dimension"] == dimension][columnas_tabla].sort_values(
             "exposicion_usd", ascending=False
@@ -688,6 +727,15 @@ def seccion_resumen_ejecutivo() -> None:
                 f"perdida esperada de {_formatear_kpi(perdida, 'USD')} "
                 f"({_formatear_kpi(_v('perdida_esperada_pct_exposicion'), '%')} de la cartera); "
                 f"{_formatear_kpi(_v('pct_exposicion_riesgo_alto'), '%')} del saldo esta en clientes de riesgo alto."
+            )
+        if _v("capacidad_ahorro_mediana_pct") is not None:
+            puntos.append(
+                f"**KPIs de negocio:** capacidad de ahorro de "
+                f"{_formatear_kpi(_v('capacidad_ahorro_mediana_pct'), '%')} "
+                f"(IC 95%: {_formatear_kpi(_v('capacidad_ahorro_ic95_inf_pct'), '%')} - "
+                f"{_formatear_kpi(_v('capacidad_ahorro_ic95_sup_pct'), '%')}), endeudamiento mensual de "
+                f"{_formatear_kpi(_v('endeudamiento_mensual_mediana_pct'), '%')} y "
+                f"{_formatear_kpi(_v('pct_clientes_semaforo_alto'), '%')} de clientes en semaforo rojo."
             )
         puntos.append(
             f"**Comportamiento:** tasa de ahorro mediana de "

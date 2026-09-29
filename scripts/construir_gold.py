@@ -156,6 +156,8 @@ def construir_gold_particion(fecha: str) -> dict:
             nombre: {"filas": int(len(df_tabla))} for nombre, df_tabla in tablas_estrella.items()
         },
         "integridad_modelo_estrella": integridad,
+        # De donde salio el pago mensual de deuda (ver modelo_dimensional.pago_mensual_deuda)
+        "fuente_pago_mensual": tablas_estrella["fact_posicion_financiera"].attrs.get("fuente_pago_mensual"),
         "gold_clientes_riesgo": {"filas": int(len(df_clientes))},
         "gold_metricas_por_segmento": {"filas": int(len(df_segmento))},
     }

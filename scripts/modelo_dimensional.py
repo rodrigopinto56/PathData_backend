@@ -58,6 +58,26 @@ RANGOS_EDAD = [
 # deuda senior sin garantia -- no tenemos datos de recuperacion propios.
 LGD = 0.45
 
+# Indice de riesgo financiero consolidado (KPI de negocio, ver
+# config/gold_schema.yml, seccion indice_riesgo_consolidado).
+# Cada componente se convierte a una escala 0 (sano) - 1 (riesgoso) con
+# una regla lineal entre un valor "sano" y un valor "riesgoso"; luego se
+# promedian con estos pesos. Pesos de criterio experto: se pueden
+# ajustar aqui sin tocar el resto del pipeline.
+PESOS_INDICE_RIESGO = {
+    "endeudamiento": 0.30,  # ratio_endeudamiento_mensual
+    "probabilidad_incumplimiento": 0.30,  # riesgo_score del modelo
+    "capacidad_ahorro": 0.20,  # tasa_ahorro
+    "credit_score": 0.20,
+}
+# (valor sano -> 0, valor riesgoso -> 1)
+ESCALAS_INDICE_RIESGO = {
+    "endeudamiento": (0.20, 0.36),  # meta de negocio: < 36% saludable
+    "probabilidad_incumplimiento": (0.0, 1.0),
+    "capacidad_ahorro": (0.20, 0.0),  # meta de negocio: 20% saludable
+    "credit_score": (740, 580),  # banda "Muy bueno" -> banda "Bajo"
+}
+
 SIN_PRESTAMO = "Sin prestamo"
 VALORES_SI = {"yes", "si", "sí", "true", "1"}
 
@@ -163,6 +183,69 @@ def construir_dim_tipo_prestamo(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Medidas de negocio
+# ---------------------------------------------------------------------------
+def pago_mensual_deuda(df: pd.DataFrame, flag_prestamo: pd.Series) -> tuple[pd.Series, str]:
+    """Cuanto paga el cliente de deuda cada mes (KPI "Ratio de
+    endeudamiento mensual" = pago mensual de deuda / ingreso mensual).
+
+    Se usa la mejor fuente disponible, en este orden:
+      1) monthly_emi_usd: la mensualidad real, si viene en Silver.
+      2) Formula de amortizacion (la misma que usa un banco para
+         calcular una mensualidad fija) con monto, tasa y plazo:
+             pago = P * r / (1 - (1 + r)^-n)
+         P = loan_amount_usd, r = tasa anual / 12, n = meses.
+      3) Si no hay ninguna: nulo (el KPI sale como N/D, no inventado).
+    Regresa (serie, nombre_de_la_fuente) para dejar registro en metadata."""
+    if "monthly_emi_usd" in df.columns:
+        pago = df["monthly_emi_usd"].astype(float)
+        fuente = "monthly_emi_usd"
+    elif {"loan_amount_usd", "loan_interest_rate_pct", "loan_term_months"} <= set(df.columns):
+        monto = df["loan_amount_usd"].astype(float)
+        r = df["loan_interest_rate_pct"].astype(float) / 100 / 12
+        n = df["loan_term_months"].astype(float)
+        con_interes = monto * r / (1 - (1 + r) ** -n)
+        sin_interes = monto / n  # si la tasa es 0 la formula divide entre 0
+        pago = con_interes.where(r > 0, sin_interes)
+        fuente = "amortizacion(loan_amount_usd, loan_interest_rate_pct, loan_term_months)"
+    else:
+        return pd.Series(float("nan"), index=df.index), "no_disponible"
+
+    # Sin prestamo = no paga deuda (0), aunque la columna venga nula.
+    return pago.where(flag_prestamo == 1, 0.0), fuente
+
+
+def _escalar(valor: pd.Series, sano: float, riesgoso: float) -> pd.Series:
+    """Convierte un valor a 0 (sano) - 1 (riesgoso), lineal entre ambos
+    extremos y recortado a [0, 1]. Funciona aunque 'sano' sea mayor que
+    'riesgoso' (p.ej. credit score: 740 sano, 580 riesgoso)."""
+    return ((valor - sano) / (riesgoso - sano)).clip(0, 1)
+
+
+def indice_riesgo_consolidado(fact: pd.DataFrame) -> pd.Series:
+    """Indice 0-100 por cliente: promedio ponderado de los componentes
+    de PESOS_INDICE_RIESGO ya escalados a 0-1.
+
+    Si un componente no esta disponible para un cliente (p.ej. no hay
+    datos de pago mensual), su peso se reparte entre los demas en vez de
+    contarlo como 0 -- asi no se "premia" al cliente por un dato faltante."""
+    componentes = {
+        "endeudamiento": fact["ratio_endeudamiento_mensual"],
+        "probabilidad_incumplimiento": fact["riesgo_score"],
+        "capacidad_ahorro": fact["tasa_ahorro"],
+        "credit_score": fact["credit_score"].astype(float),
+    }
+    suma = pd.Series(0.0, index=fact.index)
+    pesos_usados = pd.Series(0.0, index=fact.index)
+    for nombre, valor in componentes.items():
+        escalado = _escalar(valor, *ESCALAS_INDICE_RIESGO[nombre])
+        peso = PESOS_INDICE_RIESGO[nombre]
+        suma += escalado.fillna(0) * peso
+        pesos_usados += escalado.notna() * peso
+    return (suma / pesos_usados.where(pesos_usados > 0) * 100).round(1)
+
+
+# ---------------------------------------------------------------------------
 # Tabla de hechos
 # ---------------------------------------------------------------------------
 def construir_fact_posicion_financiera(
@@ -224,6 +307,13 @@ def construir_fact_posicion_financiera(
     fact["meses_cobertura_ahorro"] = (ahorro / gasto_seguro).round(2)
     # Perdida esperada (Basilea): PD x EAD x LGD
     fact["perdida_esperada_usd"] = (fact["riesgo_score"] * monto_prestamo * LGD).round(2)
+
+    # --- KPIs de negocio por cliente ---
+    pago, fuente_pago = pago_mensual_deuda(df, flag_prestamo)
+    fact["pago_mensual_deuda_usd"] = pago.round(2)
+    fact["ratio_endeudamiento_mensual"] = (pago / ingreso_seguro).round(4)
+    fact["indice_riesgo_consolidado"] = indice_riesgo_consolidado(fact)
+    fact.attrs["fuente_pago_mensual"] = fuente_pago
 
     return fact
 

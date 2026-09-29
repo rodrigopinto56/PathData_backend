@@ -3,9 +3,14 @@ scripts/kpis_financieros.py
 
 Semana 12: KPIs financieros sobre el modelo estrella de Gold.
 
-Tres familias de KPIs (ver config/gold_schema.yml, seccion
+Cuatro familias de KPIs (ver config/gold_schema.yml, seccion
 metricas_financieras, para formula, unidad y umbral de cada uno):
 
+  0) KPIs de negocio          -> los 4 de la lamina "KPI Negocio":
+                                 capacidad de ahorro (con intervalo de
+                                 confianza), endeudamiento mensual,
+                                 varianza de ingresos/gastos (sin datos
+                                 aun) e indice de riesgo consolidado
   1) Riesgo financiero        -> que tan probable es que la cartera incumpla
   2) Exposicion               -> cuanto dinero esta en juego y donde se concentra
   3) Comportamiento transaccional -> como ingresan, gastan y ahorran los clientes
@@ -33,6 +38,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
+import numpy as np
 import pandas as pd
 
 from modelo_dimensional import LGD
@@ -42,32 +48,48 @@ GOLD_BUCKET = os.getenv("GOLD_BUCKET", "gold-layer")
 # ---------------------------------------------------------------------------
 # Parametros de negocio (ver config/gold_schema.yml, parametros_financieros)
 # ---------------------------------------------------------------------------
-# DTI > 43% es el limite que usa el CFPB (EE.UU.) para una hipoteca
-# "calificada"; es la referencia mas comun para decir "sobreendeudado".
-# Supone que debt_to_income_ratio viene como fraccion (0.43 = 43%).
-UMBRAL_DTI_ALTO = 0.43
+# Meta de negocio (lamina "KPI Negocio"): destinar menos del 36% del
+# ingreso mensual al pago de deudas es saludable.
+UMBRAL_ENDEUDAMIENTO = 0.36
 # Menos de 3 meses de gastos ahorrados = sin fondo de emergencia.
 MESES_COLCHON_MINIMO = 3
 # Perfil de ahorro segun tasa de ahorro mensual (regla 50/30/20: ahorrar 20%).
 UMBRAL_AHORRADOR = 0.20
+# Semaforo del indice de riesgo consolidado (0-100)
+SEMAFORO_INDICE = [(0, 40, "Bajo"), (40, 70, "Medio"), (70, 100.01, "Alto")]
+# Intervalo de confianza por bootstrap: cuantas re-muestras y semilla
+# fija (para que la misma particion de siempre el mismo intervalo).
+BOOTSTRAP_REMUESTRAS = 500
+BOOTSTRAP_SEMILLA = 42
 
 # Catalogo de KPIs: (categoria, unidad, descripcion, umbral, alerta_si)
 #   alerta_si = "mayor"  -> ALERTA cuando valor > umbral
 #   alerta_si = "menor"  -> ALERTA cuando valor < umbral
 #   umbral = None        -> KPI informativo, sin semaforo
+NEGOCIO = "kpis_negocio"
 RIESGO = "riesgo_financiero"
 EXPOSICION = "exposicion"
 COMPORTAMIENTO = "comportamiento_transaccional"
 
 CATALOGO_KPIS = {
+    # --- KPIs de negocio (lamina "KPI Negocio") ---
+    "capacidad_ahorro_mediana_pct": (NEGOCIO, "%", "(Ingresos - Gastos) / Ingresos, mediana de la cartera. Meta: 20%", UMBRAL_AHORRADOR * 100, "menor"),
+    "capacidad_ahorro_ic95_inf_pct": (NEGOCIO, "%", "Limite inferior del intervalo de confianza 95% (bootstrap) de la capacidad de ahorro", None, None),
+    "capacidad_ahorro_ic95_sup_pct": (NEGOCIO, "%", "Limite superior del intervalo de confianza 95% (bootstrap) de la capacidad de ahorro", None, None),
+    "endeudamiento_mensual_mediana_pct": (NEGOCIO, "%", "Pago mensual de deuda / ingreso mensual, mediana de clientes con prestamo. Meta: < 36%", UMBRAL_ENDEUDAMIENTO * 100, "mayor"),
+    "pct_clientes_endeudamiento_alto": (NEGOCIO, "%", "% de clientes con prestamo que destinan mas del 36% de su ingreso a deuda", 25.0, "mayor"),
+    "varianza_ingresos_gastos": (NEGOCIO, "coef. variacion", "Volatilidad de ingresos/gastos en 3-6 meses. SIN DATOS: el dataset no trae historial mensual por cliente (ver gold_schema.yml)", None, None),
+    "indice_riesgo_consolidado_promedio": (NEGOCIO, "puntos 0-100", "Promedio del indice ponderado (endeudamiento 30%, PD 30%, ahorro 20%, credit score 20%)", 40.0, "mayor"),
+    "pct_clientes_semaforo_bajo": (NEGOCIO, "%", "% de clientes con indice consolidado < 40 (verde)", None, None),
+    "pct_clientes_semaforo_medio": (NEGOCIO, "%", "% de clientes con indice consolidado 40-70 (amarillo)", None, None),
+    "pct_clientes_semaforo_alto": (NEGOCIO, "%", "% de clientes con indice consolidado >= 70 (rojo)", 20.0, "mayor"),
     # --- Riesgo financiero ---
     "tasa_incumplimiento_historica_pct": (RIESGO, "%", "% de incumplimiento observado en loan_default_risk (dato real, no modelado)", None, None),
     "probabilidad_incumplimiento_promedio_pct": (RIESGO, "%", "PD promedio de la cartera segun el modelo de riesgo", 30.0, "mayor"),
     "pct_clientes_riesgo_alto": (RIESGO, "%", "% de clientes con riesgo_flag = Alto (PD >= 0.5)", 20.0, "mayor"),
     "credit_score_promedio": (RIESGO, "puntos", "Credit score promedio de la cartera", 670.0, "menor"),
     "pct_clientes_subprime": (RIESGO, "%", "% de clientes con credit score < 580 (banda 'Bajo')", 20.0, "mayor"),
-    "dti_mediana": (RIESGO, "ratio", "Mediana de debt_to_income_ratio entre clientes con prestamo", None, None),
-    "pct_clientes_sobreendeudados": (RIESGO, "%", f"% de clientes con prestamo y DTI > {UMBRAL_DTI_ALTO}", 25.0, "mayor"),
+    "dti_mediana": (RIESGO, "ratio", "Mediana de debt_to_income_ratio (columna original del dataset: deuda total vs ingreso, NO el pago mensual) entre clientes con prestamo", None, None),
     "auc_modelo_riesgo": (RIESGO, "ratio", "Poder discriminante del modelo que genera la PD (0.5 = azar, 1 = perfecto)", 0.70, "menor"),
     # --- Exposicion ---
     "num_prestamos_activos": (EXPOSICION, "prestamos", "Clientes con prestamo vigente", None, None),
@@ -105,6 +127,35 @@ def _redondear(valor) -> float | None:
     return round(float(valor), 4)
 
 
+def nivel_semaforo(indice) -> str:
+    if pd.isna(indice):
+        return "Sin dato"
+    for minimo, maximo, etiqueta in SEMAFORO_INDICE:
+        if minimo <= indice < maximo:
+            return etiqueta
+    return "Sin dato"
+
+
+def intervalo_confianza_mediana(valores: pd.Series) -> tuple[float | None, float | None]:
+    """Intervalo de confianza 95% de la mediana por bootstrap.
+
+    Idea: si volvieramos a sacar una muestra de clientes parecida a la
+    que tenemos, que tanto cambiaria la mediana? Se simula re-muestreando
+    los mismos datos con reemplazo muchas veces y se toma el rango donde
+    cae el 95% central de esas medianas."""
+    datos = valores.dropna().to_numpy(dtype=float)
+    if len(datos) < 2:
+        return None, None
+    rng = np.random.default_rng(BOOTSTRAP_SEMILLA)
+    medianas = []
+    # Por bloques, para no crear una matriz de 500 x 32K de un golpe
+    for _ in range(0, BOOTSTRAP_REMUESTRAS, 50):
+        muestras = rng.choice(datos, size=(50, len(datos)), replace=True)
+        medianas.append(np.median(muestras, axis=1))
+    medianas = np.concatenate(medianas)
+    return float(np.percentile(medianas, 2.5)), float(np.percentile(medianas, 97.5))
+
+
 def perfil_ahorro(tasa_ahorro) -> str:
     if pd.isna(tasa_ahorro):
         return "Sin ingreso"
@@ -131,6 +182,7 @@ def vista_analitica(tablas: dict[str, pd.DataFrame]) -> pd.DataFrame:
         )
     )
     vista["perfil_ahorro"] = vista["tasa_ahorro"].apply(perfil_ahorro)
+    vista["nivel_riesgo_consolidado"] = vista["indice_riesgo_consolidado"].apply(nivel_semaforo)
     return vista
 
 
@@ -162,7 +214,6 @@ def kpis_riesgo(fact: pd.DataFrame, df_loan_default: pd.DataFrame | None, metric
         "credit_score_promedio": _redondear(fact["credit_score"].mean()),
         "pct_clientes_subprime": _pct((fact["credit_score"] < 580).sum(), n),
         "dti_mediana": _redondear(dti.median()) if len(dti) else None,
-        "pct_clientes_sobreendeudados": _pct((dti > UMBRAL_DTI_ALTO).sum(), len(con_prestamo)),
         "auc_modelo_riesgo": (metricas_modelo or {}).get("auc"),
     }
 
@@ -203,8 +254,39 @@ def kpis_comportamiento(fact: pd.DataFrame) -> dict:
     }
 
 
+def kpis_negocio(vista: pd.DataFrame) -> dict:
+    """Los 4 KPIs de la lamina "KPI Negocio"."""
+    n = len(vista)
+    ic_inf, ic_sup = intervalo_confianza_mediana(vista["tasa_ahorro"])
+
+    con_prestamo = vista[vista["tiene_prestamo"] == 1]
+    endeudamiento = con_prestamo["ratio_endeudamiento_mensual"].dropna()
+    hay_endeudamiento = len(endeudamiento) > 0
+
+    semaforo = vista["nivel_riesgo_consolidado"]
+    return {
+        "capacidad_ahorro_mediana_pct": _redondear(vista["tasa_ahorro"].median() * 100),
+        "capacidad_ahorro_ic95_inf_pct": _redondear(ic_inf * 100) if ic_inf is not None else None,
+        "capacidad_ahorro_ic95_sup_pct": _redondear(ic_sup * 100) if ic_sup is not None else None,
+        "endeudamiento_mensual_mediana_pct": _redondear(endeudamiento.median() * 100) if hay_endeudamiento else None,
+        "pct_clientes_endeudamiento_alto": (
+            _pct((endeudamiento > UMBRAL_ENDEUDAMIENTO).sum(), len(endeudamiento)) if hay_endeudamiento else None
+        ),
+        # Pendiente de una fuente con historial mensual por cliente.
+        "varianza_ingresos_gastos": None,
+        "indice_riesgo_consolidado_promedio": _redondear(vista["indice_riesgo_consolidado"].mean()),
+        "pct_clientes_semaforo_bajo": _pct((semaforo == "Bajo").sum(), n),
+        "pct_clientes_semaforo_medio": _pct((semaforo == "Medio").sum(), n),
+        "pct_clientes_semaforo_alto": _pct((semaforo == "Alto").sum(), n),
+    }
+
+
 def _estado(valor, umbral, alerta_si) -> str:
-    if umbral is None or valor is None:
+    """OK / ALERTA segun el umbral; INFO si el KPI no tiene umbral;
+    SIN_DATOS si no se pudo calcular (para no confundirlo con un 0)."""
+    if valor is None or pd.isna(valor):
+        return "SIN_DATOS"
+    if umbral is None:
         return "INFO"
     if alerta_si == "mayor":
         return "ALERTA" if valor > umbral else "OK"
@@ -222,6 +304,7 @@ def calcular_kpis_globales(
     vista = vista_analitica(tablas)
 
     valores = {
+        **kpis_negocio(vista),
         **kpis_riesgo(fact, df_loan_default, metricas_modelo),
         **kpis_exposicion(vista),
         **kpis_comportamiento(fact),
@@ -255,6 +338,7 @@ DIMENSIONES_SEGMENTO = [
     "rango_edad",
     "employment_status",
     "perfil_ahorro",
+    "nivel_riesgo_consolidado",
 ]
 
 
@@ -265,6 +349,9 @@ def calcular_kpis_por_segmento(tablas: dict[str, pd.DataFrame], fecha: str) -> p
     vista = vista_analitica(tablas)
     vista["exposicion_usd"] = vista["loan_amount_usd"].where(vista["tiene_prestamo"] == 1, 0.0)
     vista["es_deficitario"] = (vista["flujo_libre_mensual_usd"] < 0).astype(int)
+    vista["es_semaforo_alto"] = (vista["nivel_riesgo_consolidado"] == "Alto").astype(int)
+    # Endeudamiento solo tiene sentido entre quienes tienen prestamo
+    vista["endeudamiento_con_prestamo"] = vista["ratio_endeudamiento_mensual"].where(vista["tiene_prestamo"] == 1)
     exposicion_total = vista["exposicion_usd"].sum()
 
     partes = []
@@ -282,16 +369,26 @@ def calcular_kpis_por_segmento(tablas: dict[str, pd.DataFrame], fecha: str) -> p
                 ingreso_promedio_usd=("monthly_income_usd", "mean"),
                 tasa_ahorro_mediana_pct=("tasa_ahorro", "median"),
                 pct_deficitarios=("es_deficitario", "mean"),
+                endeudamiento_mensual_mediana_pct=("endeudamiento_con_prestamo", "median"),
+                indice_riesgo_promedio=("indice_riesgo_consolidado", "mean"),
+                pct_semaforo_alto=("es_semaforo_alto", "mean"),
             )
             .reset_index()
             .rename(columns={dimension: "segmento"})
         )
+        # Intervalo de confianza 95% de la capacidad de ahorro por segmento
+        intervalos = vista.groupby(dimension, dropna=False)["tasa_ahorro"].apply(intervalo_confianza_mediana)
+        agrupado["tasa_ahorro_ic95_inf_pct"] = [np.nan if inf is None else inf * 100 for inf, _ in intervalos]
+        agrupado["tasa_ahorro_ic95_sup_pct"] = [np.nan if sup is None else sup * 100 for _, sup in intervalos]
         agrupado.insert(0, "dimension", dimension)
         partes.append(agrupado)
 
     df = pd.concat(partes, ignore_index=True)
     df["segmento"] = df["segmento"].fillna("Sin dato").astype(str)
-    for columna in ["pd_promedio_pct", "pct_riesgo_alto", "tasa_ahorro_mediana_pct", "pct_deficitarios"]:
+    for columna in [
+        "pd_promedio_pct", "pct_riesgo_alto", "tasa_ahorro_mediana_pct", "pct_deficitarios",
+        "endeudamiento_mensual_mediana_pct", "pct_semaforo_alto",
+    ]:
         df[columna] = df[columna] * 100
     df["pct_exposicion_del_total"] = df["exposicion_usd"] / exposicion_total * 100 if exposicion_total else None
     df["perdida_esperada_pct_exposicion"] = (
@@ -356,6 +453,8 @@ def calcular_kpis_particion(fecha: str) -> dict:
 
     alertas = df_kpis[df_kpis["estado"] == "ALERTA"]["kpi"].tolist()
     return {
+        "fuente_pago_mensual": tablas["fact_posicion_financiera"].attrs.get("fuente_pago_mensual"),
+        "kpis_sin_datos": df_kpis[df_kpis["estado"] == "SIN_DATOS"]["kpi"].tolist(),
         "fecha": fecha,
         "generado_en": datetime.now(timezone.utc).isoformat(),
         "kpis_calculados": int(df_kpis["valor"].notna().sum()),

@@ -111,6 +111,8 @@ def transformacion_gold_dag():
                 "particion": particion,
                 "kpis_calculados": resumen["kpis_calculados"],
                 "kpis_en_alerta": resumen["kpis_en_alerta"],
+                "kpis_sin_datos": resumen["kpis_sin_datos"],
+                "fuente_pago_mensual": resumen["fuente_pago_mensual"],
             }
         )
 
