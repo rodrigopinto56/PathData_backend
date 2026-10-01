@@ -197,15 +197,65 @@ parametros_financieros:
     Loss Given Default supervisor de Basilea II (IRB basico) para deuda
     senior sin garantia. No hay datos de recuperacion propios; si llegan,
     se reemplaza por una LGD observada.
-  umbral_dti_alto: 0.43
-  razon_dti: >
-    Limite del CFPB (EE.UU.) para hipoteca "calificada". Supone que
-    debt_to_income_ratio viene como fraccion (0.43 = 43%); verificar la
-    escala contra el profiling de la Semana 5 si el KPI sale extremo.
+  umbral_endeudamiento_mensual: 0.36
+  razon_endeudamiento: >
+    Meta de negocio de la lamina "KPI Negocio": destinar menos del 36%
+    del ingreso mensual al pago de deudas es saludable. Reemplaza al
+    umbral anterior sobre debt_to_income_ratio: en los datos reales esa
+    columna tiene mediana 1.35, o sea que mide deuda total vs ingreso, no
+    el pago mensual -- no sirve para este KPI.
   meses_colchon_minimo: 3
   umbral_perfil_ahorrador: 0.20   # regla 50/30/20
 
 metricas_financieras:
+
+  # Los 4 KPIs de la lamina "KPI Negocio"
+  kpis_negocio:
+    - kpi: capacidad_ahorro_mediana_pct
+      formula: "median((ingreso - gasto) / ingreso) x 100"
+      umbral: "< 20 = ALERTA (meta 20% saludable)"
+      bandas_confianza: >
+        capacidad_ahorro_ic95_inf_pct / _sup_pct: intervalo de confianza
+        95% de la mediana por bootstrap (500 re-muestras, semilla 42).
+        Tambien por segmento en gold_kpis_por_segmento.
+    - kpi: endeudamiento_mensual_mediana_pct
+      formula: "median(pago_mensual_deuda / ingreso_mensual) x 100, clientes con prestamo"
+      umbral: "> 36 = ALERTA"
+      fuente_pago_mensual: >
+        1) monthly_emi_usd si existe; 2) si no, formula de amortizacion
+        P*r/(1-(1+r)^-n) con loan_amount_usd, loan_interest_rate_pct y
+        loan_term_months; 3) si no, N/D. La fuente usada queda en
+        _gold_metadata (fuente_pago_mensual).
+    - {kpi: pct_clientes_endeudamiento_alto, formula: "% con prestamo y endeudamiento > 36%", umbral: "> 25 = ALERTA"}
+    - kpi: varianza_ingresos_gastos
+      formula: "coeficiente de variacion (desv. estandar / promedio) de ingreso y gasto mensual en 3-6 meses"
+      estado: SIN_DATOS
+      razon: >
+        personal_finance_ml es una foto (un renglon por cliente) y las
+        particiones diarias recargan los mismos datos: no hay historial
+        mensual por cliente. Siguiente paso: evaluar el dataset
+        ramyapintchy/personal-finance-data (transacciones con fecha) como
+        "cliente demo" del gemelo digital.
+    - kpi: indice_riesgo_consolidado_promedio
+      formula: "promedio del indice 0-100 por cliente (ver indice_riesgo_consolidado)"
+      umbral: "> 40 = ALERTA"
+    - {kpi: pct_clientes_semaforo_alto, formula: "% indice >= 70", umbral: "> 20 = ALERTA"}
+
+  indice_riesgo_consolidado:
+    implementacion: "scripts/modelo_dimensional.py (PESOS_INDICE_RIESGO, ESCALAS_INDICE_RIESGO)"
+    escala: "0 = sano, 100 = riesgoso; cada componente se lleva a 0-1 de forma lineal y se recorta"
+    componentes:
+      - {nombre: endeudamiento mensual, peso: 0.30, sano: "<= 20%", riesgoso: ">= 36%"}
+      - {nombre: probabilidad de incumplimiento (modelo), peso: 0.30, sano: "0", riesgoso: "1"}
+      - {nombre: capacidad de ahorro, peso: 0.20, sano: ">= 20%", riesgoso: "<= 0%"}
+      - {nombre: credit score, peso: 0.20, sano: ">= 740", riesgoso: "<= 580"}
+    dato_faltante: "el peso del componente faltante se reparte entre los demas (no cuenta como 0)"
+    semaforo: {Bajo: "< 40", Medio: "40 - 70", Alto: ">= 70"}
+    razon_pesos: >
+      Criterio experto (no hay incumplimientos reales en
+      personal_finance_ml para calibrarlos). El credit score entra aqui
+      porque el modelo de riesgo no lo puede usar: loan_default_risk, su
+      dataset de entrenamiento, no trae esa columna.
 
   riesgo_financiero:
     - {kpi: tasa_incumplimiento_historica_pct, formula: "mean(Loan_Default_Risk) x 100 en loan_default_risk", umbral: null}
@@ -213,8 +263,7 @@ metricas_financieras:
     - {kpi: pct_clientes_riesgo_alto, formula: "% es_riesgo_alto = 1", umbral: "> 20 = ALERTA"}
     - {kpi: credit_score_promedio, formula: "mean(credit_score)", umbral: "< 670 = ALERTA"}
     - {kpi: pct_clientes_subprime, formula: "% credit_score < 580", umbral: "> 20 = ALERTA"}
-    - {kpi: dti_mediana, formula: "median(debt_to_income_ratio) con prestamo", umbral: null}
-    - {kpi: pct_clientes_sobreendeudados, formula: "% con prestamo y DTI > umbral_dti_alto", umbral: "> 25 = ALERTA"}
+    - {kpi: dti_mediana, formula: "median(debt_to_income_ratio) con prestamo (deuda total vs ingreso, informativo)", umbral: null}
     - {kpi: auc_modelo_riesgo, formula: "AUC de LogisticRegression en test", umbral: "< 0.70 = ALERTA"}
 
   exposicion:

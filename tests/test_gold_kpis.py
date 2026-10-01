@@ -22,10 +22,17 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from kpis_financieros import (  # noqa: E402
     CATALOGO_KPIS,
+    intervalo_confianza_mediana,
     calcular_kpis_globales,
     calcular_kpis_por_segmento,
 )
-from modelo_dimensional import LGD, construir_modelo_estrella, validar_integridad  # noqa: E402
+from modelo_dimensional import (  # noqa: E402
+    LGD,
+    construir_modelo_estrella,
+    indice_riesgo_consolidado,
+    pago_mensual_deuda,
+    validar_integridad,
+)
 
 FECHA = "2026/09/22"
 
@@ -123,9 +130,14 @@ def test_kpis_globales_completos(tablas):
     kpis = calcular_kpis_globales(tablas, FECHA, df_loan_default, {"auc": 0.81})
 
     assert set(kpis["kpi"]) == set(CATALOGO_KPIS)
-    assert set(kpis["categoria"]) == {"riesgo_financiero", "exposicion", "comportamiento_transaccional"}
-    assert kpis["valor"].notna().all()
-    assert set(kpis["estado"]) <= {"OK", "ALERTA", "INFO"}
+    assert set(kpis["categoria"]) == {
+        "kpis_negocio", "riesgo_financiero", "exposicion", "comportamiento_transaccional",
+    }
+    # El unico KPI sin datos es la varianza (no hay historial mensual)
+    sin_datos = kpis[kpis["valor"].isna()]
+    assert sin_datos["kpi"].tolist() == ["varianza_ingresos_gastos"]
+    assert sin_datos["estado"].tolist() == ["SIN_DATOS"]
+    assert set(kpis["estado"]) <= {"OK", "ALERTA", "INFO", "SIN_DATOS"}
 
     valores = dict(zip(kpis["kpi"], kpis["valor"]))
     assert valores["tasa_incumplimiento_historica_pct"] == 50.0
@@ -167,4 +179,64 @@ def test_kpis_por_segmento_cuadran_con_el_total(tablas):
         "rango_edad",
         "employment_status",
         "perfil_ahorro",
+        "nivel_riesgo_consolidado",
     }
+
+
+# ---------------------------------------------------------------------------
+# KPIs de negocio (lamina "KPI Negocio")
+# ---------------------------------------------------------------------------
+def test_endeudamiento_usa_la_mensualidad_si_existe(tablas, df_calificado):
+    fact = tablas["fact_posicion_financiera"]
+    assert fact.attrs["fuente_pago_mensual"] == "monthly_emi_usd"
+    con_prestamo = df_calificado["has_loan"] == "Yes"
+    esperado = (df_calificado["monthly_emi_usd"] / df_calificado["monthly_income_usd"]).round(4)
+    pd.testing.assert_series_equal(
+        fact.loc[con_prestamo, "ratio_endeudamiento_mensual"], esperado[con_prestamo], check_names=False
+    )
+    assert (fact.loc[~con_prestamo, "ratio_endeudamiento_mensual"] == 0).all()
+
+
+def test_endeudamiento_calcula_amortizacion_sin_mensualidad():
+    """$12,000 a 12 meses al 12% anual -> mensualidad conocida de $1,066.19."""
+    df = pd.DataFrame(
+        {"loan_amount_usd": [12000.0, 1200.0], "loan_interest_rate_pct": [12.0, 0.0], "loan_term_months": [12, 12]}
+    )
+    pago, fuente = pago_mensual_deuda(df, pd.Series([1, 1]))
+    assert fuente.startswith("amortizacion")
+    assert pago.round(2).tolist() == [1066.19, 100.0]
+
+
+def test_endeudamiento_sin_columnas_queda_nulo():
+    pago, fuente = pago_mensual_deuda(pd.DataFrame({"loan_amount_usd": [1000.0]}), pd.Series([1]))
+    assert fuente == "no_disponible"
+    assert pago.isna().all()
+
+
+def test_indice_consolidado_extremos():
+    fact = pd.DataFrame(
+        {
+            # cliente sano, cliente riesgoso, cliente sin dato de endeudamiento
+            "ratio_endeudamiento_mensual": [0.10, 0.50, np.nan],
+            "riesgo_score": [0.0, 1.0, 1.0],
+            "tasa_ahorro": [0.30, -0.10, -0.10],
+            "credit_score": [800, 500, 500],
+        }
+    )
+    indice = indice_riesgo_consolidado(fact)
+    assert indice.tolist() == [0.0, 100.0, 100.0]  # el faltante no "premia" al cliente
+
+
+def test_intervalo_confianza_contiene_la_mediana():
+    valores = pd.Series(np.random.default_rng(0).normal(0.3, 0.1, 2000))
+    inferior, superior = intervalo_confianza_mediana(valores)
+    assert inferior < valores.median() < superior
+    assert superior - inferior < 0.02  # con 2000 datos el intervalo es angosto
+
+
+def test_kpis_de_negocio_calculados(tablas):
+    kpis = calcular_kpis_globales(tablas, FECHA).set_index("kpi")
+    assert kpis.loc["capacidad_ahorro_ic95_inf_pct", "valor"] <= kpis.loc["capacidad_ahorro_mediana_pct", "valor"]
+    assert kpis.loc["capacidad_ahorro_mediana_pct", "valor"] <= kpis.loc["capacidad_ahorro_ic95_sup_pct", "valor"]
+    semaforo = kpis.loc[["pct_clientes_semaforo_bajo", "pct_clientes_semaforo_medio", "pct_clientes_semaforo_alto"], "valor"]
+    assert semaforo.sum() == pytest.approx(100, abs=0.1)
