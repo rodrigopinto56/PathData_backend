@@ -1,4 +1,4 @@
-# 02 — Bitácora semanal (Semana 4 a Semana 12)
+# 02 — Bitácora semanal (Semana 4 a Semana 13)
 
 Registro de lo que se construyó cada semana según el plan del proyecto: objetivo, entregable,
 archivos, decisiones técnicas y evidencia.
@@ -18,6 +18,7 @@ archivos, decisiones técnicas y evidencia.
 | 10 | 14–18 sep | 3. Silver y calidad | Dashboard de calidad | Dashboard operativo inicial | `55062e3` |
 | 11 | 21–25 sep | 4. Gold y analítica | Diseño analítico y construcción Gold | Modelo analítico, tablas Gold | `162905d`, `88d9791` |
 | 12 | 28 sep–2 oct | 4. Gold y analítica | KPIs financieros | KPIs calculados | `88d9791`, `9727747`, `ce3f0ef` |
+| 13 | 5–9 oct | 4. Gold y analítica | Dashboard ejecutivo | Dashboard ejecutivo v1 | ver historial (S13) |
 
 ---
 
@@ -180,3 +181,34 @@ archivos, decisiones técnicas y evidencia.
 - Corrección `9727747`: `FileNotFoundError` en el dashboard por la caché de listados de s3fs.
 
 **Evidencia (partición 2026/09/22, datos reales):** AUC 0.86, exposición total $3,246 M, tasa de ahorro mediana 39.9%.
+
+---
+
+## Semana 13 — Dashboard ejecutivo
+
+**Objetivo:** publicar los indicadores para alguien que no es programador (p. ej. un ejecutivo de negocio).
+
+**Qué se hizo**
+- `scripts/reporte_ejecutivo.py`: capa de **lenguaje de negocio** sobre los KPIs de Gold:
+  - Diagnóstico de la cartera (Saludable / Requiere atención / Crítico) en una frase.
+  - Los 4 KPIs de la lámina explicados con palabras ("de cada $100 que gana...").
+  - **Acciones sugeridas** por reglas: cada KPI en alerta se traduce en una acción concreta con prioridad
+    (p. ej. endeudamiento alto → ofrecer consolidación de deuda).
+  - Nombres de segmentos traducidos (Employed → Empleado, North → Norte) y montos legibles ("$3.2 mil millones").
+  - Reporte HTML de una página, autocontenido e imprimible.
+- `dashboard/ejecutivo.py`: app Streamlit separada (puerto 8502, tema claro, color institucional), en el orden
+  en que lee un ejecutivo: diagnóstico → indicadores clave → semáforo → dinero en juego → dónde está el riesgo →
+  acciones → clientes prioritarios (descarga CSV) → descarga del reporte.
+- Tarea `publicar_reporte_ejecutivo` en `transformacion_gold_dag` ("publicar indicadores"): cada día deja el
+  reporte en `gold-layer/reportes_ejecutivos/` y `data/reports/ejecutivo/`.
+- `tests/test_reporte_ejecutivo.py`: 10 pruebas (reglas del diagnóstico, orden de acciones, foco de riesgo,
+  traducciones, HTML sin recursos externos y con texto escapado). Total del proyecto: 27 pruebas.
+- `docs/07_guia_dashboard_ejecutivo.md`: guía de uso sin tecnicismos.
+
+**Decisiones técnicas**
+- **Dos dashboards, dos audiencias:** el técnico conserva el detalle (salud de la malla, calidad, 35 KPIs); el
+  ejecutivo muestra solo lo que sirve para decidir.
+- **Una sola lógica de negocio** compartida por el dashboard y el reporte: nunca se contradicen.
+- **Estado = ícono + texto + color** (✓ / ! / ✕), nunca solo color (accesibilidad y daltonismo).
+- **Rojo reservado para riesgo:** los botones usan el azul institucional, no el rojo por defecto de Streamlit.
+- **Acciones por reglas** (no IA generativa): explicables, auditables y deterministas.

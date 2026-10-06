@@ -10,6 +10,8 @@ RUN pip install --no-cache-dir \
     pyyaml
 
 COPY dashboard/ /app/
+# Semana 13: logica de negocio compartida con el reporte que publica el DAG
+COPY scripts/reporte_ejecutivo.py /app/
 
 EXPOSE 8501
 

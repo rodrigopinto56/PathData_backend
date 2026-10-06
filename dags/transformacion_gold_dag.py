@@ -11,6 +11,9 @@ Semanas 11-12: orquesta Silver -> Gold.
   4) (Semana 12) Calcula los KPIs financieros -- riesgo, exposicion y
      comportamiento transaccional -- sobre el modelo estrella y los sube
      como gold_kpis_financieros + gold_kpis_por_segmento.
+  5) (Semana 13) Publica el reporte ejecutivo en HTML (una pagina, en
+     lenguaje de negocio) en gold-layer/reportes_ejecutivos/ y en
+     data/reports/ejecutivo/.
 
 A diferencia de transformacion_silver_dag, este DAG NO usa
 SparkSubmitOperator: toda la logica corre en pandas dentro de la misma
@@ -33,6 +36,7 @@ from airflow.operators.python import get_current_context
 sys.path.append("/opt/airflow/scripts")
 from construir_gold import construir_gold_particion
 from kpis_financieros import calcular_kpis_particion
+from reporte_ejecutivo import publicar_reporte_particion
 
 logger = logging.getLogger("transformacion_gold_dag")
 
@@ -118,7 +122,32 @@ def transformacion_gold_dag():
 
         return resumen
 
-    construir_gold() >> calcular_kpis()
+    @task
+    def publicar_reporte_ejecutivo() -> dict:
+        """Semana 13: "publicar indicadores". Genera el reporte de una
+        pagina para el ejecutivo a partir de los KPIs recien calculados,
+        asi cada dia hay un archivo listo para compartir sin abrir el
+        dashboard."""
+        context = get_current_context()
+        fecha_logica = context["logical_date"].in_timezone("America/Mexico_City")
+        particion = fecha_logica.format("YYYY/MM/DD")
+
+        resumen = publicar_reporte_particion(particion)
+
+        registrar_evento(
+            {
+                "nivel": "INFO",
+                "task": "publicar_reporte_ejecutivo",
+                "fuente": "reportes_ejecutivos",
+                "particion": particion,
+                "diagnostico": resumen["diagnostico"],
+                "acciones_sugeridas": resumen["acciones_sugeridas"],
+            }
+        )
+
+        return resumen
+
+    construir_gold() >> calcular_kpis() >> publicar_reporte_ejecutivo()
 
 
 transformacion_gold_dag()

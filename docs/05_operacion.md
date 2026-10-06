@@ -24,7 +24,8 @@ docker compose up -d
 | Airflow | http://localhost:8080 | airflow / airflow |
 | MinIO (consola) | http://localhost:9001 | admin / password123 |
 | Spark UI | http://localhost:8081 | — |
-| Dashboard | http://localhost:8501 | — |
+| Dashboard técnico | http://localhost:8501 | — |
+| Dashboard ejecutivo | http://localhost:8502 | — |
 
 ### 2.1 Configuración manual (una sola vez)
 
@@ -71,6 +72,7 @@ docker compose exec airflow-scheduler bash -c "cd /opt/airflow/scripts && python
 ```
 
 `construir_gold.py` debe correr primero: escribe las tablas `dim_*` y `fact_*` que lee `kpis_financieros.py`.
+Para regenerar solo el reporte ejecutivo de una fecha: `python reporte_ejecutivo.py 2026/09/22` (mismo contenedor y carpeta).
 
 ### 3.3 Validaciones manuales
 
@@ -88,9 +90,10 @@ pip install pandas pyarrow scikit-learn pytest
 pytest tests/
 ```
 
-`tests/test_gold_kpis.py` (17 pruebas, datos sintéticos, no necesita Docker) cubre:
+`tests/test_gold_kpis.py` (17 pruebas) y `tests/test_reporte_ejecutivo.py` (10 pruebas) usan datos sintéticos y no necesitan Docker. Cubren:
 - **Modelo estrella**: tablas completas, integridad referencial, detección de FK huérfanas, grano, miembro "Sin prestamo", normalización y pérdida esperada.
 - **KPIs**: catálogo completo, cuadre de la exposición con la tabla de hechos, semáforo de umbrales y cuadre de segmentos contra el total.
+- **Dashboard ejecutivo**: reglas del diagnóstico, orden de las acciones, foco de riesgo por región, traducciones y reporte HTML seguro y autocontenido.
 - **KPIs de negocio**: fuente del pago mensual (mensualidad real, amortización o N/D), índice consolidado en sus extremos, intervalo de confianza y suma del semáforo = 100%.
 
 ## 5. Actualizar después de un `git pull`
@@ -98,7 +101,7 @@ pytest tests/
 | Qué cambió | Qué hacer |
 |---|---|
 | `dags/`, `scripts/`, `config/`, `src/spark/` | Nada: están montados como volumen. `docker compose restart airflow-scheduler airflow-webserver` si un DAG no refleja el cambio. |
-| `dashboard/` | Reconstruir: `docker compose build streamlit` y `docker compose up -d streamlit` (el código se **copia** a la imagen). |
+| `dashboard/` o `scripts/reporte_ejecutivo.py` | Reconstruir: `docker compose build streamlit streamlit-ejecutivo` y `docker compose up -d streamlit streamlit-ejecutivo` (el código se **copia** a la imagen). |
 | `Dockerfile` (dependencias) | `docker compose build` y `docker compose up -d` |
 
 ## 6. Troubleshooting (problemas reales encontrados)
@@ -112,4 +115,5 @@ pytest tests/
 | `extraer_y_validar` falla sin reintentar | Faltan columnas esperadas en el CSV | Volver a descargar con `downloadRawData.py` y revisar el `manifest.json` |
 | `descargar_particion_bronze` falla | No existe la partición Bronze de esa fecha | Correr primero `ingesta_bronze_dag` para esa fecha |
 | KPI en **`SIN_DATOS`** / "N/D" | No hay columnas para calcularlo (p. ej. pago mensual) o falta historial | Esperado; revisar `fuente_pago_mensual` en `_gold_metadata` |
+| Dashboard ejecutivo: *"se calcularon con una versión anterior del proceso"* | La partición no tiene los KPIs de negocio | Re-ejecutar `transformacion_gold_dag` para esa fecha |
 | Vista 1 muestra valores de `nivel` "OTRO" | Eventos con un nivel distinto de INFO/ALERTA (p. ej. `ERROR`) | El dashboard los agrupa y los avisa; revisar `pipeline_log.jsonl` |

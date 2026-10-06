@@ -4,7 +4,7 @@ Backend de datos del proyecto **BBVA Path Data**: un pipeline con **arquitectura
 (Bronze → Silver → Gold) que ingiere datos financieros públicos, los limpia y valida,
 los modela para análisis y calcula KPIs financieros y de negocio, visibles en un dashboard.
 
-Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 12** (KPIs financieros).
+Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 13** (dashboard ejecutivo).
 
 ## Contenido
 
@@ -16,6 +16,7 @@ Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 12** (KP
 | [04 — Catálogo de KPIs](04_kpis.md) | ¿Cómo se calcula cada KPI, cuál es su meta y cómo se interpreta? |
 | [05 — Operación y troubleshooting](05_operacion.md) | ¿Cómo levanto, ejecuto y pruebo el proyecto? ¿Qué hago si algo falla? |
 | [06 — Decisiones técnicas y deuda técnica](06_decisiones_y_deuda_tecnica.md) | ¿Por qué se eligió cada tecnología? ¿Qué limitaciones conocidas hay? |
+| [07 — Guía del dashboard ejecutivo](07_guia_dashboard_ejecutivo.md) | ¿Cómo lee el tablero alguien que no es programador? |
 
 ## Stack tecnológico
 
@@ -27,7 +28,7 @@ Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 12** (KP
 | Procesamiento local | pandas + pyarrow | Gold, modelo estrella y KPIs |
 | Calidad de datos | Great Expectations 0.18 | Expectativas generadas desde `config/silver_schema.yml` |
 | Machine Learning | scikit-learn (LogisticRegression) | Modelo de riesgo de incumplimiento |
-| Visualización | Streamlit + Plotly | Dashboard de calidad, riesgo y KPIs |
+| Visualización | Streamlit + Plotly | Dashboard técnico (8501) y dashboard ejecutivo (8502) |
 | Infraestructura | Docker Compose | Todos los servicios en contenedores |
 | Metadatos Airflow | PostgreSQL 15 | Base de datos interna de Airflow |
 | Pruebas | pytest | `tests/test_gold_kpis.py` |
@@ -50,11 +51,12 @@ PathData_backend/
 │   ├── modelo_riesgo.py              # S11: modelo de riesgo
 │   ├── modelo_dimensional.py         # S11: esquema estrella
 │   ├── construir_gold.py             # S11: construcción de Gold
-│   └── kpis_financieros.py           # S12: KPIs
+│   ├── kpis_financieros.py           # S12: KPIs
+│   └── reporte_ejecutivo.py          # S13: lenguaje de negocio + reporte HTML
 ├── config/                       # Contratos declarativos
 │   ├── silver_schema.yml             # S9: reglas de Silver
 │   └── gold_schema.yml               # S11–S12: modelo, métricas y KPIs
-├── dashboard/                    # S10–S12: Streamlit
+├── dashboard/                    # Streamlit: app.py (técnico, S10–S12) y ejecutivo.py (S13)
 ├── tests/                        # S12: pruebas unitarias
 ├── pathDataBBVA.py               # S4: exploración y profiling
 ├── docker-compose.yml / Dockerfile / Dockerfile.streamlit
@@ -69,7 +71,8 @@ docker compose up -d
 # Airflow:   http://localhost:8080  (airflow / airflow)
 # MinIO:     http://localhost:9001  (admin / password123)
 # Spark UI:  http://localhost:8081
-# Dashboard: http://localhost:8501
+# Dashboard técnico:   http://localhost:8501
+# Dashboard ejecutivo: http://localhost:8502
 ```
 
 Pasos completos (conexiones de Airflow, datos crudos, backfills) en [05 — Operación](05_operacion.md).
