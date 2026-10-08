@@ -467,21 +467,25 @@ def generar_reporte_html(resumen: dict, segmentos: pd.DataFrame | None = None) -
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reporte ejecutivo {_e(fecha_legible(resumen['fecha']))}</title>
 <style>
-  :root {{ --surface:#fcfcfb; --card:#ffffff; --ink:#0b0b0b; --ink-2:#52514e; --line:#e4e3df; --accent:#072146; }}
+  /* Sin fuentes externas (el reporte se manda por correo y debe verse
+     igual sin internet): usa Source Serif 4 / IBM Plex Sans si estan
+     instaladas y si no Georgia / Segoe UI, presentes en casi todo equipo. */
+  :root {{ --serif:'Source Serif 4',Georgia,'Times New Roman',serif; --sans:'IBM Plex Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;
+           --surface:#fcfcfb; --card:#ffffff; --ink:#0b0b0b; --ink-2:#52514e; --line:#e4e3df; --accent:#072146; }}
   * {{ box-sizing:border-box; }}
-  body {{ margin:0; background:var(--surface); color:var(--ink); font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }}
+  body {{ margin:0; background:var(--surface); color:var(--ink); font:15px/1.55 var(--sans); }}
   main {{ max-width:960px; margin:0 auto; padding:32px 16px; }}
   header {{ border-bottom:3px solid var(--accent); padding-bottom:12px; margin-bottom:20px; }}
-  h1 {{ margin:0; font-size:26px; color:var(--accent); }}
-  h2 {{ font-size:18px; margin:28px 0 10px; color:var(--accent); }}
-  h3 {{ margin:0; font-size:15px; }}
+  h1 {{ margin:0; font-family:var(--serif); font-size:30px; font-weight:700; letter-spacing:-0.01em; color:var(--accent); }}
+  h2 {{ font-family:var(--serif); font-size:20px; font-weight:600; margin:30px 0 10px; color:var(--accent); }}
+  h3 {{ margin:0; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-2); }}
   .muted {{ color:var(--ink-2); font-size:13px; }}
   .diag {{ border-left:6px solid {color_diag}; background:var(--card); padding:14px 16px; border-radius:8px; }}
   .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }}
   .card {{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }}
   .card-top {{ display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }}
   .card p {{ margin:6px 0 0; font-size:13px; }}
-  .big {{ font-size:30px; font-weight:700; margin-top:8px; }}
+  .big {{ font-size:30px; font-weight:600; margin-top:8px; letter-spacing:-0.02em; font-variant-numeric:tabular-nums lining-nums; }}
   .chip {{ display:inline-flex; align-items:center; gap:5px; border:1.5px solid; border-radius:999px; padding:1px 8px 1px 2px; font-size:12px; white-space:nowrap; }}
   .dot {{ display:inline-grid; place-items:center; width:16px; height:16px; border-radius:50%; color:#fff; font-size:11px; font-weight:700; }}
   .bar {{ display:flex; height:22px; border-radius:6px; overflow:hidden; gap:2px; background:var(--surface); }}

@@ -212,3 +212,6 @@ archivos, decisiones técnicas y evidencia.
 - **Estado = ícono + texto + color** (✓ / ! / ✕), nunca solo color (accesibilidad y daltonismo).
 - **Rojo reservado para riesgo:** los botones usan el azul institucional, no el rojo por defecto de Streamlit.
 - **Acciones por reglas** (no IA generativa): explicables, auditables y deterministas.
+- **Tipografía:** títulos en *Source Serif 4* (serif editorial, como la lámina del proyecto) y texto y cifras
+  en *IBM Plex Sans* con números tabulares. El reporte HTML no carga fuentes externas (para verse igual sin
+  internet): usa Georgia / Segoe UI si esas fuentes no están instaladas.
