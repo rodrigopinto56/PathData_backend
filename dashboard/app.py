@@ -533,9 +533,6 @@ def seccion_kpis_financieros() -> None:
         return
     seg_fecha = segmentos[segmentos["fecha"] == fecha]
 
-    # --- Semaforo del indice de riesgo consolidado ---
-    # Barra horizontal apilada al 100%: responde "que parte de la
-    # cartera esta en verde / amarillo / rojo" de un vistazo.
     por_semaforo = seg_fecha[
         (seg_fecha["dimension"] == "nivel_riesgo_consolidado") & seg_fecha["segmento"].isin(ORDEN_SEMAFORO)
     ].copy()
