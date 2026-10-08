@@ -43,6 +43,17 @@ TEXTO_2 = "#52514e"
 LINEA = "#e4e3df"
 ACENTO = "#072146"        # azul marino institucional para titulos
 SERIE = "#2a78d6"         # una sola serie -> un solo color
+
+# --- Tipografia ---
+# Titulos en serif editorial (como la lamina del proyecto) y texto/cifras en
+# una sans corporativa con numeros tabulares (las cifras quedan alineadas).
+# Si el navegador no puede bajar Google Fonts, cae a Georgia / Segoe UI.
+FUENTE_TITULOS = "'Source Serif 4', Georgia, 'Times New Roman', serif"
+FUENTE_TEXTO = "'IBM Plex Sans', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+URL_FUENTES = (
+    "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600"
+    "&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap"
+)
 UMBRAL_INDICE = 40        # meta del indice de riesgo
 
 st.set_page_config(page_title="Salud financiera de la cartera", layout="wide")
@@ -50,18 +61,37 @@ st.set_page_config(page_title="Salud financiera de la cartera", layout="wide")
 st.markdown(
     f"""
     <style>
+      @import url('{URL_FUENTES}');
+
+      /* Texto general (sin tocar los iconos de Streamlit, que usan su propia fuente) */
+      .stApp, .stApp p, .stApp li, .stApp label, .stApp button, .stApp input,
+      .stApp [data-testid="stMarkdownContainer"], .stApp [data-testid="stCaptionContainer"],
+      .stApp [data-testid="stMetricLabel"], .stApp [data-baseweb="select"] div {{
+        font-family: {FUENTE_TEXTO};
+      }}
+      /* Titulos */
+      .stApp h1, .stApp h2, .stApp h3 {{
+        font-family: {FUENTE_TITULOS}; color: {ACENTO}; letter-spacing: -0.01em;
+      }}
+      .stApp h1 {{ font-weight: 700; font-size: 2.4rem; }}
+      .stApp h3 {{ font-weight: 600; }}
+      /* Cifras: sans, peso medio, numeros tabulares */
+      .big, .stApp [data-testid="stMetricValue"], .stApp [data-testid="stMetricValue"] * {{
+        font-family: {FUENTE_TEXTO}; font-weight: 600;
+        font-variant-numeric: tabular-nums lining-nums; letter-spacing: -0.02em; color: {TEXTO};
+      }}
       .block-container {{ padding-top: 2rem; max-width: 1200px; }}
-      h1, h2, h3 {{ color: {ACENTO}; }}
       .sub {{ color: {TEXTO_2}; margin-top: -0.6rem; }}
       .diag {{ background:#fff; border:1px solid {LINEA}; border-left:6px solid var(--c); border-radius:10px; padding:14px 18px; margin: 8px 0 4px; }}
       .diag p {{ margin:8px 0 0; font-size:1.05rem; color:{TEXTO}; }}
       .card {{ background:#fff; border:1px solid {LINEA}; border-radius:12px; padding:16px; height:100%; }}
       .card-top {{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }}
-      .card h4 {{ margin:10px 0 0; font-size:0.95rem; color:{TEXTO}; }}
-      .big {{ font-size:2rem; font-weight:700; color:{TEXTO}; margin:6px 0 2px; }}
+      .card h4 {{ margin:10px 0 0; font-family:{FUENTE_TEXTO}; font-size:0.78rem; font-weight:600;
+                  text-transform:uppercase; letter-spacing:0.06em; color:{TEXTO_2}; }}
+      .big {{ font-size:2.1rem; margin:6px 0 2px; }}
       .card p {{ margin:4px 0 0; font-size:0.85rem; color:{TEXTO}; }}
       .muted {{ color:{TEXTO_2} !important; }}
-      .chip {{ display:inline-flex; align-items:center; gap:5px; border:1.5px solid; border-radius:999px; padding:1px 9px 1px 2px; font-size:0.75rem; color:{TEXTO}; white-space:nowrap; }}
+      .chip {{ display:inline-flex; align-items:center; gap:5px; border:1.5px solid; border-radius:999px; padding:1px 9px 1px 2px; font-size:0.75rem; font-weight:500; color:{TEXTO}; white-space:nowrap; }}
       .dot {{ display:inline-grid; place-items:center; width:17px; height:17px; border-radius:50%; color:#fff; font-size:0.7rem; font-weight:700; }}
       .bar {{ display:flex; height:28px; border-radius:6px; overflow:hidden; gap:2px; }}
       .leg {{ display:flex; flex-wrap:wrap; gap:6px 28px; margin-top:10px; color:{TEXTO}; }}
@@ -228,6 +258,7 @@ if dimensiones:
         )
         fig.update_layout(
             plot_bgcolor=SURFACE, paper_bgcolor=SURFACE, font_color=TEXTO_2, showlegend=False,
+            font_family=FUENTE_TEXTO, hoverlabel=dict(font_family=FUENTE_TEXTO),
             height=max(220, 52 * len(grafica) + 60), margin=dict(t=40, b=10, l=10, r=40),
             xaxis=dict(title="Índice de riesgo (0 = sano, 100 = riesgoso)", range=[0, 100], gridcolor=LINEA, zeroline=False),
             yaxis=dict(title=""),
