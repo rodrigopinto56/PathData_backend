@@ -18,6 +18,7 @@ data/tmp/
 data/reports/*.html
 data/reports/*.csv
 data/reports/*.jsonl
+data/reports/ejecutivo/
 !data/raw/manifest.json
 
 # ---------------------------------------------------------------------------

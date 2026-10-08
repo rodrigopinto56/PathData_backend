@@ -277,6 +277,30 @@ def cargar_gold_kpis_segmento() -> pd.DataFrame:
     return _cargar_particiones_gold("gold_kpis_por_segmento")
 
 
+# ---------------------------------------------------------------------------
+# Dashboard ejecutivo (Semana 13)
+# ---------------------------------------------------------------------------
+def cargar_clientes_particion(fecha: str) -> pd.DataFrame:
+    """Detalle por cliente de UNA fecha: fact_posicion_financiera unida
+    con dim_cliente y dim_region (el modelo estrella de la Semana 11).
+    Solo una particion, para no leer ~32K filas por cada fecha."""
+    rutas = {
+        tabla: f"s3://{GOLD_BUCKET}/{tabla}/{fecha}/data.parquet"
+        for tabla in ["fact_posicion_financiera", "dim_cliente", "dim_region"]
+    }
+    try:
+        fact = pd.read_parquet(rutas["fact_posicion_financiera"], storage_options=_storage_options())
+        clientes = pd.read_parquet(rutas["dim_cliente"], storage_options=_storage_options())
+        regiones = pd.read_parquet(rutas["dim_region"], storage_options=_storage_options())
+    except FileNotFoundError:
+        return pd.DataFrame()
+
+    columnas_cliente = [c for c in ["user_id", "age", "employment_status"] if c in clientes.columns]
+    return fact.merge(regiones, on="region_id", how="left").merge(
+        clientes[columnas_cliente], on="user_id", how="left"
+    )
+
+
 def _storage_options() -> dict:
     return {
         "key": MINIO_KEY,

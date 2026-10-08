@@ -128,6 +128,25 @@ services:
       - minio
     restart: unless-stopped
 
+  # Semana 13: dashboard ejecutivo (lenguaje de negocio, tema claro).
+  # Misma imagen que el dashboard tecnico, otra app y otro puerto.
+  streamlit-ejecutivo:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: streamlit_ejecutivo
+    command: ["streamlit", "run", "ejecutivo.py", "--server.address=0.0.0.0", "--server.port=8502", "--theme.base=light", "--theme.primaryColor=#072146"]
+    ports:
+      - "8502:8502"
+    environment:
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ROOT_USER: "admin"
+      MINIO_ROOT_PASSWORD: "password123"
+      GOLD_BUCKET: "gold-layer"
+    depends_on:
+      - minio
+    restart: unless-stopped
+
 volumes:
   postgres-db-volume:
   minio-volume:

@@ -19,7 +19,9 @@ flowchart LR
     S -->|Great Expectations| S
     S -->|transformacion_gold_dag<br/>construir_gold.py| G[(MinIO<br/>gold-layer)]
     G -->|calcular_kpis<br/>kpis_financieros.py| G
-    G --> D[Dashboard<br/>Streamlit]
+    G --> D[Dashboard técnico<br/>Streamlit :8501]
+    G --> E[Dashboard ejecutivo<br/>Streamlit :8502]
+    G -->|publicar_reporte_ejecutivo| H[Reporte HTML diario]
     S --> D
     L[pipeline_log.jsonl] --> D
 ```
@@ -35,7 +37,8 @@ flowchart LR
 | `minio` | minio/minio | 9000 (API S3), 9001 (consola) | Data lake (buckets por capa) |
 | `spark` | bitnamilegacy/spark | 7077, 8081 (UI) | Spark master |
 | `spark-worker` | bitnamilegacy/spark | — | Spark worker |
-| `streamlit` | build `Dockerfile.streamlit` | 8501 | Dashboard |
+| `streamlit` | build `Dockerfile.streamlit` | 8501 | Dashboard técnico |
+| `streamlit-ejecutivo` | build `Dockerfile.streamlit` | 8502 | Dashboard ejecutivo (tema claro) |
 
 **Imagen de Airflow (`Dockerfile`)**: parte de `apache/airflow:2.9.3` y agrega Java 17 (lo necesita
 el driver de Spark) y las librerías del pipeline (pandas, pyarrow, s3fs, providers de Amazon y Spark,
@@ -77,6 +80,7 @@ gold-layer/
   gold_metricas_por_segmento/YYYY/MM/DD/data.parquet
   gold_kpis_financieros/YYYY/MM/DD/data.parquet
   gold_kpis_por_segmento/YYYY/MM/DD/data.parquet
+  reportes_ejecutivos/reporte_ejecutivo_YYYY-MM-DD.html  # reporte de 1 página (S13)
   _gold_metadata/YYYY-MM-DD.json                    # métricas del modelo + integridad + fuente del pago mensual
 ```
 
@@ -130,11 +134,13 @@ flowchart LR
 ```mermaid
 flowchart LR
     A[construir_gold<br/>modelo de riesgo + estrella + integridad] --> B[calcular_kpis<br/>KPIs globales y por segmento]
+    B --> C[publicar_reporte_ejecutivo<br/>reporte HTML de 1 página]
 ```
 
 | Tarea | Qué hace |
 |---|---|
 | `construir_gold` | 1) Entrena el modelo de riesgo con `loan_default_risk`; 2) califica a los clientes de `personal_finance_ml`; 3) construye el **modelo estrella** y **valida integridad** (falla si hay FK huérfanas o PK duplicadas); 4) escribe las tablas Gold y `_gold_metadata`. |
+| `publicar_reporte_ejecutivo` | Traduce los KPIs a lenguaje de negocio (diagnóstico, acciones sugeridas) y publica un reporte HTML autocontenido en `gold-layer/reportes_ejecutivos/` y `data/reports/ejecutivo/`. |
 | `calcular_kpis` | Lee el modelo estrella, calcula 35 KPIs (con semáforo) y los KPIs por segmento. Registra el evento como `INFO` aunque haya KPIs en alerta (una alerta de negocio no es una falla del pipeline). |
 
 Gold usa **pandas, no Spark**: ~32 K filas no justifican el costo de un job distribuido (ver [06](06_decisiones_y_deuda_tecnica.md)).
@@ -190,6 +196,15 @@ Detalle de columnas en [03 — Diccionario de datos](03_diccionario_datos.md).
 | 2 — Calidad de datos | `_calidad_reporte.json` | % de expectativas cumplidas por partición y fuente, umbral 95%. |
 | 3 — Riesgo de crédito | `gold_clientes_riesgo`, `gold_metricas_por_segmento`, `_gold_metadata` | Accuracy/AUC, % riesgo alto por banda, top 10 clientes. |
 | 4 — KPIs financieros | `gold_kpis_financieros`, `gold_kpis_por_segmento` | KPIs de negocio, semáforo, riesgo, exposición y comportamiento; tabla por segmento. |
+
+### 7.1 Dashboard ejecutivo (Semana 13)
+
+`dashboard/ejecutivo.py`, puerto 8502, tema claro. Misma fuente de datos que el técnico, otra audiencia:
+diagnóstico en una frase, los 4 KPIs de negocio explicados con palabras, semáforo de clientes, dinero en juego,
+"¿dónde está el riesgo?" por segmento, acciones sugeridas y clientes prioritarios (descargables).
+
+La traducción a lenguaje de negocio vive en `scripts/reporte_ejecutivo.py` y la comparten el dashboard y la tarea
+`publicar_reporte_ejecutivo`: el tablero y el reporte diario nunca dicen cosas distintas. Guía de uso: [07](07_guia_dashboard_ejecutivo.md).
 
 `dashboard/data_loader.py` separa la lectura de datos de la interfaz (`app.py`), y los datos se
 cachean 30 s con `st.cache_data`.
