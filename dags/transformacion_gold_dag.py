@@ -11,6 +11,8 @@ Semanas 11-12: orquesta Silver -> Gold.
   4) (Semana 12) Calcula los KPIs financieros -- riesgo, exposicion y
      comportamiento transaccional -- sobre el modelo estrella y los sube
      como gold_kpis_financieros + gold_kpis_por_segmento.
+  4b) (Semana 15) Pronostica ingreso/gasto/ahorro del cliente demo y
+     calcula su estabilidad (alimenta el KPI de estabilidad).
   5) (Semana 13) Publica el reporte ejecutivo en HTML (una pagina, en
      lenguaje de negocio) en gold-layer/reportes_ejecutivos/ y en
      data/reports/ejecutivo/.
@@ -37,6 +39,7 @@ sys.path.append("/opt/airflow/scripts")
 from construir_gold import construir_gold_particion
 from kpis_financieros import calcular_kpis_particion
 from reporte_ejecutivo import publicar_reporte_particion
+from prediccion_financiera import pronosticar_particion
 
 logger = logging.getLogger("transformacion_gold_dag")
 
@@ -85,7 +88,9 @@ def transformacion_gold_dag():
                 "task": "construir_gold",
                 "fuente": "modelo_estrella+gold_clientes_riesgo+gold_metricas_por_segmento",
                 "particion": particion,
-                "accuracy_modelo": resumen["modelo"]["accuracy"],
+                "origen_modelo": resumen["modelo"].get("origen"),
+                "version_modelo": resumen["modelo"].get("version"),
+                "auc_modelo": resumen["modelo"].get("auc"),
                 "integridad_modelo_estrella": resumen["integridad_modelo_estrella"]["exito_global"],
             }
         )
@@ -147,7 +152,23 @@ def transformacion_gold_dag():
 
         return resumen
 
-    construir_gold() >> calcular_kpis() >> publicar_reporte_ejecutivo()
+    @task
+    def pronosticar_cliente_demo() -> dict:
+        """Semana 15. Si la fuente opcional de transacciones no esta, no
+        falla: el KPI de estabilidad queda como SIN_DATOS."""
+        context = get_current_context()
+        particion = context["logical_date"].in_timezone("America/Mexico_City").format("YYYY/MM/DD")
+        resumen = pronosticar_particion(particion)
+        registrar_evento({
+            "nivel": "INFO",
+            "task": "pronosticar_cliente_demo",
+            "fuente": "gold_pronostico_cliente_demo",
+            "particion": particion,
+            **resumen,
+        })
+        return resumen
+
+    construir_gold() >> pronosticar_cliente_demo() >> calcular_kpis() >> publicar_reporte_ejecutivo()
 
 
 transformacion_gold_dag()

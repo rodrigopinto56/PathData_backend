@@ -19,6 +19,8 @@ flowchart LR
     S -->|Great Expectations| S
     S -->|transformacion_gold_dag<br/>construir_gold.py| G[(MinIO<br/>gold-layer)]
     G -->|calcular_kpis<br/>kpis_financieros.py| G
+    S -->|entrenamiento_modelo_dag| M[(MinIO<br/>ml-models)]
+    M -->|campeón| G
     G --> D[Dashboard técnico<br/>Streamlit :8501]
     G --> E[Dashboard ejecutivo<br/>Streamlit :8502]
     G -->|publicar_reporte_ejecutivo| H[Reporte HTML diario]
@@ -84,11 +86,24 @@ gold-layer/
   _gold_metadata/YYYY-MM-DD.json                    # métricas del modelo + integridad + fuente del pago mensual
 ```
 
-`<fuente>` ∈ {`loan_default_risk`, `personal_finance_ml`}.
+`<fuente>` ∈ {`loan_default_risk`, `personal_finance_ml`, `credit_risk` (S14), `transacciones_cliente_demo` (S14)}.
+Las dos últimas son **opcionales**: si no se descargaron, sus tareas se marcan *skipped* en vez de fallar.
+
+Desde la Semana 15 también existen en `gold-layer`: `gold_features_entrenamiento`, `gold_features_cartera`,
+`reporte_seleccion_variables`, `gold_pronostico_cliente_demo`, `gold_transacciones_mensuales`,
+`_features_metadata/` y `_pronostico_metadata/`. Y un bucket nuevo:
+
+```
+ml-models/riesgo_credito/
+  campeon.json                     # versión vigente + razón de la promoción
+  v<AAAAMMDDhhmmss>/modelo.joblib   # artefacto (solo lo escribe el pipeline)
+  v<AAAAMMDDhhmmss>/model_card.json # métricas, calibración, pruebas, equidad, PSI, limitaciones
+  v<AAAAMMDDhhmmss>/tabla_puntos.csv
+```
 
 ## 4. DAGs de Airflow
 
-Los tres DAGs son `@daily`, `catchup=False` y usan la zona horaria `America/Mexico_City`.
+Los DAGs de datos son `@daily` y el de entrenamiento es `@weekly`. Todos tienen `catchup=False` y usan la zona horaria `America/Mexico_City`.
 Cada tarea escribe un evento JSON en `data/reports/pipeline_log.jsonl` (log compartido que
 alimenta la Vista 1 del dashboard).
 
@@ -133,7 +148,8 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    A[construir_gold<br/>modelo de riesgo + estrella + integridad] --> B[calcular_kpis<br/>KPIs globales y por segmento]
+    A[construir_gold<br/>califica con el campeón + estrella + integridad] --> P[pronosticar_cliente_demo<br/>S15]
+    P --> B
     B --> C[publicar_reporte_ejecutivo<br/>reporte HTML de 1 página]
 ```
 
@@ -141,7 +157,19 @@ flowchart LR
 |---|---|
 | `construir_gold` | 1) Entrena el modelo de riesgo con `loan_default_risk`; 2) califica a los clientes de `personal_finance_ml`; 3) construye el **modelo estrella** y **valida integridad** (falla si hay FK huérfanas o PK duplicadas); 4) escribe las tablas Gold y `_gold_metadata`. |
 | `publicar_reporte_ejecutivo` | Traduce los KPIs a lenguaje de negocio (diagnóstico, acciones sugeridas) y publica un reporte HTML autocontenido en `gold-layer/reportes_ejecutivos/` y `data/reports/ejecutivo/`. |
-| `calcular_kpis` | Lee el modelo estrella, calcula 35 KPIs (con semáforo) y los KPIs por segmento. Registra el evento como `INFO` aunque haya KPIs en alerta (una alerta de negocio no es una falla del pipeline). |
+| `calcular_kpis` | Lee el modelo estrella, calcula 37 indicadores (KPIs con meta y métricas de contexto), con semáforo, y los KPIs por segmento. Registra el evento como `INFO` aunque haya KPIs en alerta (una alerta de negocio no es una falla del pipeline). |
+
+`construir_gold` **no entrena**: carga el modelo campeón del registro (o el de la Semana 11 si aún no hay uno).
+`pronosticar_cliente_demo` (S15) proyecta ingreso, gasto y ahorro del cliente demo y calcula su estabilidad.
+
+### 4.4 `entrenamiento_modelo_dag` — features y modelo (S14–S15, semanal)
+
+```mermaid
+flowchart LR
+    A[construir_dataset_features<br/>features, IV, selección, partición] --> B[entrenar_y_registrar_modelo<br/>candidatos, calibración, pruebas, registro]
+```
+
+Detalle en [08 — Dataset para IA y modelo](08_dataset_ia_y_modelo.md).
 
 Gold usa **pandas, no Spark**: ~32 K filas no justifican el costo de un job distribuido (ver [06](06_decisiones_y_deuda_tecnica.md)).
 
@@ -195,7 +223,8 @@ Detalle de columnas en [03 — Diccionario de datos](03_diccionario_datos.md).
 | 1 — Salud de la malla | `pipeline_log.jsonl` | Eventos por día y por tarea, tasa de éxito, últimas alertas. |
 | 2 — Calidad de datos | `_calidad_reporte.json` | % de expectativas cumplidas por partición y fuente, umbral 95%. |
 | 3 — Riesgo de crédito | `gold_clientes_riesgo`, `gold_metricas_por_segmento`, `_gold_metadata` | Accuracy/AUC, % riesgo alto por banda, top 10 clientes. |
-| 4 — KPIs financieros | `gold_kpis_financieros`, `gold_kpis_por_segmento` | KPIs de negocio, semáforo, riesgo, exposición y comportamiento; tabla por segmento. |
+| 4 — KPIs financieros | `gold_kpis_financieros`, `gold_kpis_por_segmento` | KPIs de negocio, semáforo, riesgo, exposición y comportamiento, con % de avance hacia la meta; tabla por segmento. |
+| 5 — Modelo de riesgo e IA | `ml-models/riesgo_credito`, `reporte_seleccion_variables` | Campeón, candidatos, calibración, peso de variables, IV, pruebas de negocio, equidad, PSI, historial de versiones. |
 
 ### 7.1 Dashboard ejecutivo (Semana 13)
 

@@ -6,6 +6,8 @@
 |---|---|---|---|---|---|
 | `loan_default_risk` | `himelsarder/loan-default-risk-prediction-dataset` | `loan_default_risk_dataset.csv` | 300 | Un préstamo | Entrenar el modelo de riesgo (tiene el target real) |
 | `personal_finance_ml` | `miadul/personal-finance-ml-dataset` | `synthetic_personal_finance_dataset.csv` | 32,424 | Un cliente | Cartera a calificar; base de Gold y KPIs |
+| `credit_risk` (S14, opcional) | `laotse/credit-risk-dataset` | `credit_risk_dataset.csv` | ~32.5 K | Un préstamo | Entrenar el modelo predictivo (tiene `loan_status`) |
+| `transacciones_cliente_demo` (S14, opcional) | `ramyapintchy/personal-finance-data` | `personal_finance_transactions.csv` | 1,500 | Una transacción | Pronóstico y estabilidad del cliente demo |
 
 Checksums y fecha de descarga: `data/raw/manifest.json`.
 
@@ -73,6 +75,25 @@ Deduplicación: **por `user_id`**.
 | `_calidad_reporte.json` | `exito_global`, expectativas totales/exitosas/fallidas (con detalle), filas evaluadas |
 | `_silver_metadata.json` | `version_dataset: silver_v1`, fecha de congelamiento, resumen de calidad |
 
+### 3.4 `credit_risk` (S14)
+
+| Columna | Regla |
+|---|---|
+| `loan_status` | ∈ {0, 1}, sin nulos (target) |
+| `person_age` | entre 18 y 100 (el dataset trae edades imposibles) |
+| `person_income`, `loan_amnt` | > 0 |
+| `loan_percent_income` | entre 0 y 1 |
+| `person_emp_length` | nulo o entre 0 y 60 |
+| `loan_int_rate` | nulo o entre 0 y 40 |
+| `loan_grade` | ∈ {A … G} |
+
+Deduplicación por fila completa. El resto de columnas (`person_home_ownership`, `loan_intent`, `cb_person_default_on_file`, `cb_person_cred_hist_length`) se conserva.
+
+### 3.5 `transacciones_cliente_demo` (S14)
+
+Columnas renombradas en Silver: `Date → fecha`, `Transaction Description → descripcion`, `Category → categoria`, `Amount → monto`, `Type → tipo`.
+Reglas: `fecha` válida, `monto` > 0, `tipo` ∈ {Income, Expense}. Deduplicación por fila completa.
+
 ## 4. Gold — modelo estrella
 
 Diseño: `config/gold_schema.yml` → `modelo_dimensional`. Implementación: `scripts/modelo_dimensional.py`.
@@ -99,8 +120,8 @@ Grano: **un renglón por cliente por fecha de partición.**
 | Base | `loan_amount_usd` | 0 si no tiene préstamo (monto expuesto, EAD) |
 | Base | `debt_to_income_ratio, credit_score` | Desde Silver |
 | Opcionales | `loan_term_months, monthly_emi_usd, loan_interest_rate_pct` | Si existen en Silver |
-| Modelo | `riesgo_score` | Probabilidad de incumplimiento (PD), 0–1 |
-| Modelo | `es_riesgo_alto` | 1 si `riesgo_score ≥ 0.5` |
+| Modelo | `riesgo_score` | Probabilidad de impago (PD), 0–1. Con el modelo S15: calibrada a la cartera y **nula si el cliente no tiene préstamo** |
+| Modelo | `es_riesgo_alto` | 1 si la PD supera el umbral del modelo vigente (S15: 3 × tasa objetivo = 15%; S11: 0.5) |
 | Derivada | `flujo_libre_mensual_usd` | ingreso − gasto |
 | Derivada | `tasa_ahorro` | (ingreso − gasto) / ingreso |
 | Derivada | `ratio_gasto_ingreso` | gasto / ingreso |
@@ -116,18 +137,30 @@ Divisiones entre 0 (ingreso o gasto = 0) quedan como nulo, no como infinito.
 
 | Tabla | Grano | Contenido |
 |---|---|---|
-| `gold_clientes_riesgo` | Cliente | Perfil + `riesgo_score` + `riesgo_flag` (Alto/Bajo). Detalle para CRM/BI. |
+| `gold_clientes_riesgo` | Cliente | Perfil + `riesgo_score` + `riesgo_flag` (Alto / Bajo / Sin préstamo). Con el modelo S15 además: `puntaje_riesgo`, `grado_credito_proxy` y `razones_riesgo`. |
 | `gold_metricas_por_segmento` | Región × banda de score | Clientes, ingreso y ahorro promedio, % con préstamo, DTI promedio, % riesgo alto. |
-| `gold_kpis_financieros` | KPI × fecha (formato largo) | `fecha, categoria, kpi, valor, unidad, umbral, estado, descripcion` |
+| `gold_kpis_financieros` | KPI × fecha (formato largo) | `fecha, categoria, kpi, tipo_indicador (KPI/Metrica), valor, unidad, umbral, meta, brecha, avance_meta_pct, estado, descripcion` |
 | `gold_kpis_por_segmento` | Dimensión × segmento × fecha | Clientes, PD, % riesgo alto, score, préstamos, exposición, pérdida esperada, ingreso, tasa de ahorro (+ IC 95%), % deficitarios, endeudamiento mensual, índice consolidado, % semáforo alto. |
 
 Dimensiones de `gold_kpis_por_segmento`: `region, rango_credit_score, tipo_prestamo, rango_edad, employment_status, perfil_ahorro, nivel_riesgo_consolidado`.
 
-### 4.4 `_gold_metadata/<YYYY-MM-DD>.json`
+### 4.4 Tablas de IA (S14–S15)
+
+| Tabla | Grano | Contenido |
+|---|---|---|
+| `gold_features_entrenamiento` | Préstamo de `credit_risk` | Features candidatas + `impago` + `particion_modelo` (entrenamiento/validacion/prueba) |
+| `reporte_seleccion_variables` | Variable candidata | `iv`, `fuerza`, `decision`, `razon`, `vif` |
+| `gold_features_cartera` | Cliente de la cartera | Mismas features (sin alinear) + `tiene_prestamo`, `genero`, `edad` (solo auditoría) |
+| `gold_pronostico_cliente_demo` | Mes × serie | `serie` (ingreso/gasto/ahorro), `tipo` (historico/pronostico), `valor`, `limite_inferior`, `limite_superior`, `modelo` |
+| `gold_transacciones_mensuales` | Mes × tipo × categoría | `monto`, `transacciones` |
+| `_features_metadata/<fecha>.json` | — | Versión del dataset, filas, tasa de impago por partición, features seleccionadas/excluidas, cuantiles de referencia, calidad |
+| `_pronostico_metadata/<fecha>.json` | — | Comparación de modelos (MAE), modelos elegidos, estabilidad |
+
+### 4.5 `_gold_metadata/<YYYY-MM-DD>.json`
 
 | Campo | Contenido |
 |---|---|
-| `modelo` | filas de entrenamiento/prueba, accuracy, AUC, coeficientes |
+| `modelo` | `origen` (`campeon_s15` o `modelo_s11`); S15: versión, AUC, Gini, KS, Brier, umbral de riesgo alto; S11: accuracy, AUC, coeficientes |
 | `modelo_estrella` | filas por tabla |
 | `integridad_modelo_estrella` | `exito_global` + detalle de los 11 chequeos |
 | `fuente_pago_mensual` | `monthly_emi_usd`, `amortizacion(...)` o `no_disponible` |

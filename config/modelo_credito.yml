@@ -1,0 +1,64 @@
+# config/modelo_credito.yml
+#
+# Semana 15: parametros del modelo predictivo de riesgo crediticio.
+# Implementacion: scripts/modelo_credito.py (entrenamiento, evaluacion,
+# calibracion, registro) y dags/entrenamiento_modelo_dag.py.
+
+registro:
+  bucket: ml-models
+  ruta: riesgo_credito            # ml-models/riesgo_credito/<version>/...
+
+candidatos:
+  scorecard:
+    descripcion: "Regresion logistica sobre WoE (scorecard estilo banca): explicable en puntos"
+    regularizacion_C: 1.0
+  boosting:
+    descripcion: "HistGradientBoosting con restricciones de monotonia (retador)"
+    max_iter: 300
+    learning_rate: 0.05
+    max_leaf_nodes: 15
+    min_samples_leaf: 50
+
+validacion_cruzada:
+  pliegues: 5
+  semilla: 42
+
+seleccion_campeon:
+  # El retador (boosting) solo le gana a la scorecard si mejora el AUC en
+  # prueba por al menos este margen SIN empeorar la calibracion (Brier).
+  # Con empate tecnico gana la scorecard: en banca se prefiere lo explicable.
+  ventaja_minima_auc_retador: 0.02
+  # Un modelo nuevo solo reemplaza al campeon vigente si no lo empeora
+  # (evaluados ambos sobre el mismo conjunto de prueba).
+  tolerancia_auc_vs_campeon: 0.005
+
+calibracion:
+  metodo: platt                   # sigmoide ajustada sobre el conjunto de validacion
+  # Tasa de impago con la que se re-escala la probabilidad para la cartera.
+  # El dataset de entrenamiento tiene ~22% de impago (muy alto); una cartera
+  # de consumo tipica anda entre 3% y 8%. Ajustable por negocio.
+  tasa_impago_objetivo: 0.05
+
+clasificacion:
+  # Riesgo "Alto" = PD calibrada >= multiplicador x tasa objetivo (5% -> 15%)
+  multiplicador_riesgo_alto: 3.0
+
+scorecard_puntos:
+  # Convencion clasica: 600 puntos = odds 50:1 de pagar; cada 20 puntos
+  # duplican las odds (PDO). A mas puntos, menos riesgo.
+  puntos_base: 600
+  odds_base: 50
+  pdo: 20
+
+pruebas_negocio:
+  # El riesgo debe SUBIR (o mantenerse) al empeorar estas variables.
+  # Si una falla, el modelo NO se promueve a campeon.
+  monotonia:
+    ratio_prestamo_ingreso: 1
+    grado_credito: 1
+
+equidad:
+  # Regla de los 4/5: la tasa de "riesgo alto" del grupo menos favorecido
+  # no deberia superar 1.25x la del mas favorecido (equivale a que la tasa
+  # de aprobacion del peor grupo sea >= 80% de la del mejor).
+  ratio_minimo_aprobacion: 0.8

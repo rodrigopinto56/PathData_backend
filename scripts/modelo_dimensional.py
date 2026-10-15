@@ -222,13 +222,17 @@ def _escalar(valor: pd.Series, sano: float, riesgoso: float) -> pd.Series:
     return ((valor - sano) / (riesgoso - sano)).clip(0, 1)
 
 
-def indice_riesgo_consolidado(fact: pd.DataFrame) -> pd.Series:
+def indice_riesgo_consolidado(fact: pd.DataFrame, escala_pd: tuple | None = None) -> pd.Series:
     """Indice 0-100 por cliente: promedio ponderado de los componentes
     de PESOS_INDICE_RIESGO ya escalados a 0-1.
 
     Si un componente no esta disponible para un cliente (p.ej. no hay
     datos de pago mensual), su peso se reparte entre los demas en vez de
-    contarlo como 0 -- asi no se "premia" al cliente por un dato faltante."""
+    contarlo como 0 -- asi no se "premia" al cliente por un dato faltante.
+
+    `escala_pd` (sano, riesgoso) ajusta el componente de probabilidad de
+    impago a la escala del modelo vigente: el modelo de la Semana 15 da PDs
+    calibradas a la cartera (~5%), no de 0 a 1 como el de la Semana 11."""
     componentes = {
         "endeudamiento": fact["ratio_endeudamiento_mensual"],
         "probabilidad_incumplimiento": fact["riesgo_score"],
@@ -238,7 +242,8 @@ def indice_riesgo_consolidado(fact: pd.DataFrame) -> pd.Series:
     suma = pd.Series(0.0, index=fact.index)
     pesos_usados = pd.Series(0.0, index=fact.index)
     for nombre, valor in componentes.items():
-        escalado = _escalar(valor, *ESCALAS_INDICE_RIESGO[nombre])
+        sano, riesgoso = escala_pd if (nombre == "probabilidad_incumplimiento" and escala_pd) else ESCALAS_INDICE_RIESGO[nombre]
+        escalado = _escalar(valor, sano, riesgoso)
         peso = PESOS_INDICE_RIESGO[nombre]
         suma += escalado.fillna(0) * peso
         pesos_usados += escalado.notna() * peso
@@ -249,7 +254,7 @@ def indice_riesgo_consolidado(fact: pd.DataFrame) -> pd.Series:
 # Tabla de hechos
 # ---------------------------------------------------------------------------
 def construir_fact_posicion_financiera(
-    df_calificado: pd.DataFrame, fecha: str, dims: dict[str, pd.DataFrame]
+    df_calificado: pd.DataFrame, fecha: str, dims: dict[str, pd.DataFrame], escala_pd: tuple | None = None
 ) -> pd.DataFrame:
     """Grano: un renglon por cliente por fecha de particion (snapshot).
 
@@ -306,19 +311,22 @@ def construir_fact_posicion_financiera(
     fact["ratio_gasto_ingreso"] = (gasto / ingreso_seguro).round(4)
     fact["meses_cobertura_ahorro"] = (ahorro / gasto_seguro).round(2)
     # Perdida esperada (Basilea): PD x EAD x LGD
-    fact["perdida_esperada_usd"] = (fact["riesgo_score"] * monto_prestamo * LGD).round(2)
+    # (sin prestamo no hay perdida: la PD nula del modelo S15 cuenta como 0)
+    fact["perdida_esperada_usd"] = (fact["riesgo_score"] * monto_prestamo * LGD).fillna(0.0).round(2)
 
     # --- KPIs de negocio por cliente ---
     pago, fuente_pago = pago_mensual_deuda(df, flag_prestamo)
     fact["pago_mensual_deuda_usd"] = pago.round(2)
     fact["ratio_endeudamiento_mensual"] = (pago / ingreso_seguro).round(4)
-    fact["indice_riesgo_consolidado"] = indice_riesgo_consolidado(fact)
+    fact["indice_riesgo_consolidado"] = indice_riesgo_consolidado(fact, escala_pd)
     fact.attrs["fuente_pago_mensual"] = fuente_pago
 
     return fact
 
 
-def construir_modelo_estrella(df_calificado: pd.DataFrame, fecha: str) -> dict[str, pd.DataFrame]:
+def construir_modelo_estrella(
+    df_calificado: pd.DataFrame, fecha: str, escala_pd: tuple | None = None
+) -> dict[str, pd.DataFrame]:
     """Punto de entrada: regresa {nombre_tabla: DataFrame} con las 5
     dimensiones y la tabla de hechos."""
     dims = {
@@ -328,7 +336,7 @@ def construir_modelo_estrella(df_calificado: pd.DataFrame, fecha: str) -> dict[s
         "dim_banda_credito": construir_dim_banda_credito(),
         "dim_tipo_prestamo": construir_dim_tipo_prestamo(df_calificado),
     }
-    fact = construir_fact_posicion_financiera(df_calificado, fecha, dims)
+    fact = construir_fact_posicion_financiera(df_calificado, fecha, dims, escala_pd)
     return {**dims, "fact_posicion_financiera": fact}
 
 

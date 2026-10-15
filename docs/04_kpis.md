@@ -10,8 +10,21 @@ Salida: `gold_kpis_financieros` (global) y `gold_kpis_por_segmento`.
 |---|---|
 | `OK` | Tiene umbral y está del lado sano |
 | `ALERTA` | Tiene umbral y lo rebasa → requiere atención |
-| `INFO` | Informativo, sin umbral |
+| `INFO` | Informativo, sin umbral (una **métrica**, no un KPI) |
 | `SIN_DATOS` | No se puede calcular con los datos actuales (se muestra "N/D", nunca 0) |
+
+## KPI vs. métrica: meta, brecha y avance
+
+Un **KPI** tiene meta (`tipo_indicador = KPI`); una **métrica** solo da contexto (`tipo_indicador = Metrica`). Cada KPI trae:
+
+| Campo | Significado | Ejemplo |
+|---|---|---|
+| `valor` | Valor actual | Capacidad de ahorro 15.6% |
+| `meta` | Objetivo | `>= 20%` |
+| `brecha` | Distancia a la meta; positiva = margen, negativa = lo que falta | −4.4 (faltan 4.4 puntos) |
+| `avance_meta_pct` | % del camino recorrido (100 = cumplida). Meta mínima: valor / meta; meta máxima: meta / valor | 78% |
+
+En el dashboard ejecutivo se ve como una barra bajo cada indicador ("78% de la meta · Faltan 4.4 pts").
 
 ## Parámetros de negocio
 
@@ -32,7 +45,8 @@ Salida: `gold_kpis_financieros` (global) y `gold_kpis_por_segmento`.
 | `capacidad_ahorro_ic95_inf_pct` / `_sup_pct` | Percentiles 2.5 y 97.5 de 500 medianas bootstrap | Informativo ("bandas de confianza") |
 | `endeudamiento_mensual_mediana_pct` | mediana(pago mensual / ingreso) × 100, clientes con préstamo | ALERTA si > 36% |
 | `pct_clientes_endeudamiento_alto` | % de clientes con préstamo y endeudamiento > 36% | ALERTA si > 25% |
-| `varianza_ingresos_gastos` | Coeficiente de variación a 3–6 meses | `SIN_DATOS` (no hay historial mensual) |
+| `varianza_ingresos_gastos` | **Cliente demo**: coeficiente de variación (desviación / promedio) de los últimos 6 meses del ingreso o del gasto, el mayor de los dos | ALERTA si > 30%. `SIN_DATOS` si no se descargaron las transacciones |
+| `cv_ingreso_6m_pct` / `cv_gasto_6m_pct` | Cliente demo: coeficiente de variación de cada serie | Informativo |
 | `indice_riesgo_consolidado_promedio` | promedio del índice 0–100 | ALERTA si > 40 |
 | `pct_clientes_semaforo_bajo` / `_medio` / `_alto` | % de clientes por nivel del índice | ALERTA si rojo > 20% |
 
@@ -66,9 +80,9 @@ Cada componente se lleva a una escala 0–1 de forma lineal entre un valor "sano
 
 | KPI | Fórmula | Alerta |
 |---|---|---|
-| `tasa_incumplimiento_historica_pct` | mean(`Loan_Default_Risk`) × 100 en Silver | — |
+| `tasa_incumplimiento_historica_pct` | Tasa de impago real del dataset de entrenamiento (`credit_risk.loan_status`; antes `loan_default_risk`) | — |
 | `probabilidad_incumplimiento_promedio_pct` | mean(`riesgo_score`) × 100 | > 30% |
-| `pct_clientes_riesgo_alto` | % con PD ≥ 0.5 | > 20% |
+| `pct_clientes_riesgo_alto` | % de clientes con PD ≥ umbral del modelo vigente (S15: 15%) | > 20% |
 | `credit_score_promedio` | mean(`credit_score`) | < 670 |
 | `pct_clientes_subprime` | % con score < 580 | > 20% |
 | `dti_mediana` | mediana(`debt_to_income_ratio`) con préstamo | — (deuda total vs. ingreso, informativo) |

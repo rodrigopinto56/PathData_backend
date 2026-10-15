@@ -30,6 +30,8 @@ import s3fs
 from modelo_riesgo import STORAGE_OPTIONS, MINIO_ENDPOINT, MINIO_KEY, MINIO_SECRET
 from modelo_riesgo import SILVER_BUCKET, entrenar_modelo, calificar_clientes
 from modelo_dimensional import construir_modelo_estrella, validar_integridad
+from features import cargar_contrato, features_cartera
+from modelo_credito import cargar_campeon_minio
 
 import os
 
@@ -77,22 +79,49 @@ def construir_gold_particion(fecha: str) -> dict:
     )
     _bucket_existe_o_crear(fs, GOLD_BUCKET)
 
-    # --- Entrenar + calificar ---
-    resultado_entrenamiento = entrenar_modelo(fecha)
-    modelo = resultado_entrenamiento["modelo"]
-    metricas_modelo = resultado_entrenamiento["metricas"]
-
     df_pf = pd.read_parquet(
         f"s3://{SILVER_BUCKET}/personal_finance_ml/{fecha}/valid",
         storage_options=STORAGE_OPTIONS,
     )
-    df_calificado = calificar_clientes(df_pf, modelo)
+
+    # --- Calificar: campeon de la Semana 15 si existe; si no, modelo S11 ---
+    # El campeon se entrena aparte (entrenamiento_modelo_dag); aqui solo se
+    # CARGA la version vigente y se califica (entrenamiento != inferencia).
+    campeon, card = cargar_campeon_minio()
+    escala_pd = None
+    if campeon is not None:
+        contrato = cargar_contrato()
+        df_calificado = campeon.calificar_cartera(df_pf, contrato)
+        escala_pd = tuple(card["escala_indice_pd"])
+        prueba = card["metricas_prueba"]
+        metricas_modelo = {
+            "origen": "campeon_s15",
+            "version": card["version"],
+            "modelo": card["modelo_elegido"],
+            "auc": prueba["auc"],
+            "gini": prueba["gini"],
+            "ks": prueba["ks"],
+            "brier": prueba["brier"],
+            "accuracy": None,
+            "filas_entrenamiento": card["dataset"]["filas_por_particion"].get("entrenamiento"),
+            "filas_prueba": card["dataset"]["filas_por_particion"].get("prueba"),
+            "umbral_riesgo_alto": card["umbral_riesgo_alto"],
+        }
+        # Features de la cartera (S14), mismas reglas que en entrenamiento
+        features_cartera(df_pf, contrato, campeon.distribucion_grados).to_parquet(
+            f"s3://{GOLD_BUCKET}/gold_features_cartera/{fecha}/data.parquet",
+            storage_options=STORAGE_OPTIONS, index=False,
+        )
+    else:
+        resultado_entrenamiento = entrenar_modelo(fecha)
+        metricas_modelo = {"origen": "modelo_s11", **resultado_entrenamiento["metricas"]}
+        df_calificado = calificar_clientes(df_pf, resultado_entrenamiento["modelo"])
 
     # --- Modelo estrella (dimensiones + hechos) ---
     # Se valida la integridad ANTES de escribir nada: si una FK queda
     # huerfana o una PK se repite, es mejor que la tarea falle (y Airflow
     # reintente / alerte) a publicar un modelo roto que alimente los KPIs.
-    tablas_estrella = construir_modelo_estrella(df_calificado, fecha)
+    tablas_estrella = construir_modelo_estrella(df_calificado, fecha, escala_pd)
     integridad = validar_integridad(tablas_estrella)
     if not integridad["exito_global"]:
         fallidos = [c for c in integridad["detalle"] if not c["exito"]]
@@ -106,7 +135,8 @@ def construir_gold_particion(fecha: str) -> dict:
         )
 
     # --- Tabla 1: gold_clientes_riesgo (detalle por cliente) ---
-    df_clientes = df_calificado[COLUMNAS_CLIENTES_RIESGO].copy()
+    extras_s15 = [c for c in ["puntaje_riesgo", "grado_credito_proxy", "razones_riesgo"] if c in df_calificado.columns]
+    df_clientes = df_calificado[COLUMNAS_CLIENTES_RIESGO + extras_s15].copy()
     ruta_clientes = f"s3://{GOLD_BUCKET}/gold_clientes_riesgo/{fecha}/data.parquet"
     df_clientes.to_parquet(ruta_clientes, storage_options=STORAGE_OPTIONS, index=False)
 

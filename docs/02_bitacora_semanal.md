@@ -1,4 +1,4 @@
-# 02 — Bitácora semanal (Semana 4 a Semana 13)
+# 02 — Bitácora semanal (Semana 4 a Semana 15)
 
 Registro de lo que se construyó cada semana según el plan del proyecto: objetivo, entregable,
 archivos, decisiones técnicas y evidencia.
@@ -18,7 +18,9 @@ archivos, decisiones técnicas y evidencia.
 | 10 | 14–18 sep | 3. Silver y calidad | Dashboard de calidad | Dashboard operativo inicial | `55062e3` |
 | 11 | 21–25 sep | 4. Gold y analítica | Diseño analítico y construcción Gold | Modelo analítico, tablas Gold | `162905d`, `88d9791` |
 | 12 | 28 sep–2 oct | 4. Gold y analítica | KPIs financieros | KPIs calculados | `88d9791`, `9727747`, `ce3f0ef` |
-| 13 | 5–9 oct | 4. Gold y analítica | Dashboard ejecutivo | Dashboard ejecutivo v1 | ver historial (S13) |
+| 13 | 5–9 oct | 4. Gold y analítica | Dashboard ejecutivo | Dashboard ejecutivo v1 | `6d19947`, `03c6810` |
+| 14 | 12–16 oct | 5. IA | Preparación de datasets para IA | Dataset para modelos | ver historial (S14–S15) |
+| 15 | 19–23 oct | 5. IA | Modelo predictivo | Modelo ML funcional | ver historial (S14–S15) |
 
 ---
 
@@ -168,7 +170,7 @@ archivos, decisiones técnicas y evidencia.
 
 **Qué se hizo**
 - `scripts/kpis_financieros.py` + tarea `calcular_kpis` en `transformacion_gold_dag`.
-- **35 KPIs** en 4 familias, cada uno con unidad, descripción, umbral y estado (`OK`/`ALERTA`/`INFO`/`SIN_DATOS`):
+- **35 KPIs** en 4 familias (37 desde la S15, con la estabilidad), cada uno con unidad, descripción, umbral y estado (`OK`/`ALERTA`/`INFO`/`SIN_DATOS`):
   KPIs de negocio (10), riesgo financiero (7), exposición (10) y comportamiento transaccional (8).
 - **KPIs por segmento** (región, banda de score, tipo de préstamo, edad, empleo, perfil de ahorro, nivel de riesgo).
 - **KPIs de negocio de la lámina** (`ce3f0ef`):
@@ -215,3 +217,60 @@ archivos, decisiones técnicas y evidencia.
 - **Tipografía:** títulos en *Source Serif 4* (serif editorial, como la lámina del proyecto) y texto y cifras
   en *IBM Plex Sans* con números tabulares. El reporte HTML no carga fuentes externas (para verse igual sin
   internet): usa Georgia / Segoe UI si esas fuentes no están instaladas.
+
+---
+
+## Semana 14 — Preparación de datasets para IA
+
+**Objetivo:** un dataset de variables versionado, documentado y validado, igual para entrenar y para calificar.
+
+**Qué se hizo**
+- **Dos fuentes nuevas** por toda la malla, con los mismos patrones de siempre (contrato, cuarentena, deduplicación, Great Expectations):
+  - `credit_risk`: ~32 K préstamos **etiquetados** (pagó / no pagó). Es la base del modelo. Cuarentena para edades imposibles y antigüedades laborales absurdas.
+  - `transacciones_cliente_demo`: 60 meses de transacciones de un cliente. Es la serie de tiempo del pronóstico. Las columnas se normalizan a snake_case en español.
+  - Las dos son **opcionales**: si no se descargaron, sus tareas se saltan sin romper el resto.
+- **Contrato de features** `config/features.yml`: qué variables, cómo se calculan en cada lado, unidad, rango, monotonía y por qué se excluye cada candidata.
+- `scripts/features.py`:
+  - *Feature engineering* con **paridad** entrenamiento/cartera (ratios, logaritmos, grado de crédito por cuantiles del credit score).
+  - **WoE/IV** con bins monótonos.
+  - **Selección** por IV, redundancia (Spearman, VIF), paridad y atributos protegidos.
+  - **Partición** 70/15/15 estratificada.
+  - **Validación** contra el contrato.
+  - **Alineación por cuantiles** de la cartera, con su medición de PSI.
+- El generador de expectativas de Great Expectations ahora entiende reglas genéricas (`entre A y B`, `en {...}`), sin cambiar las que ya existían.
+
+**Decisiones técnicas**
+- **Paridad antes que cantidad:** se excluyen variables útiles (antigüedad laboral, impago previo) porque no existen en la cartera. Un modelo que usa datos que no tendrá al calificar falla en producción.
+- **Género y edad fuera del modelo**, pero dentro de la auditoría de equidad.
+- **Alineación por cuantiles:** la cartera y el entrenamiento son poblaciones distintas (PSI > 1 en el ratio préstamo/ingreso). Se compara a cada cliente contra su propia cartera, y la limitación queda documentada.
+
+---
+
+## Semana 15 — Modelo predictivo
+
+**Objetivo:** un modelo de riesgo crediticio entrenado, evaluado, calibrado, versionado y explicable, más una predicción financiera.
+
+**Qué se hizo**
+- `scripts/modelo_credito.py`:
+  - **Dos candidatos:** scorecard (WoE + logística) y gradient boosting con restricciones de monotonía.
+  - **Evaluación:** validación cruzada de 5 pliegues con AUC, **Gini**, KS y Brier.
+  - **Calibración:** Platt más ajuste a la tasa de impago objetivo de la cartera (5%).
+  - **Controles:** pruebas de sentido de negocio (monotonía) y auditoría de equidad (regla 4/5).
+  - **Registro** versionado con regla **campeón/retador**.
+  - **Calificación** de la cartera con PD, puntaje, nivel de riesgo y **3 razones por cliente**.
+- `dags/entrenamiento_modelo_dag.py`: el entrenamiento se **separa** de la calificación diaria (semanal o manual). `construir_gold` solo carga el campeón y, si no existe, usa el modelo de la Semana 11.
+- `scripts/prediccion_financiera.py`: pronóstico de 6 meses de ingreso, gasto y ahorro del cliente demo, con *backtesting* contra baselines y banda de incertidumbre. Alimenta el KPI de **estabilidad**, que deja de estar "Pendiente".
+- **KPIs con meta, brecha y % de avance** (pedido del mentor): cada indicador se clasifica como **KPI** (tiene meta) o **Métrica** (contexto).
+- **Dashboards:**
+  - **Técnico:** nueva Vista 5 con candidatos, calibración, peso de variables, IV, pruebas, equidad, PSI e historial de versiones.
+  - **Ejecutivo:** barras de avance, probabilidad de impago y factores por cliente, y la proyección del cliente demo.
+- **Pruebas:** 58 en total. Se agregaron pruebas del modelo, de features y del pronóstico, con un generador sintético que tiene el mismo esquema que el dataset real.
+- **Documentación:** [08 — Dataset para IA y modelo](08_dataset_ia_y_modelo.md).
+
+**Decisiones técnicas**
+- **Scorecard por defecto:** el retador necesita +0.02 de AUC sin peor calibración. En banca lo explicable gana los empates.
+- **Entrenamiento ≠ inferencia:** versión registrada, promoción con reglas y evento `ALERTA` si un retador no se promueve.
+- **El pronóstico solo usa un modelo si le gana al baseline.** Con los datos reales le gana: −26% de error en ingreso y −37% en gasto.
+- **Sin dependencias nuevas:** scikit-learn ya estaba; las series de tiempo se implementaron con numpy.
+
+**Evidencia:** prueba de punta a punta con S3 simulado y con el CSV real de transacciones: Gold con respaldo → dataset → entrenamiento → re-entrenamiento con campeón/retador → Gold con campeón → pronóstico → 37 KPIs → reporte. El dataset de riesgo se probó con datos sintéticos del mismo esquema; sus métricas reales salen al correr el DAG con el dataset descargado.

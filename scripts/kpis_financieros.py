@@ -78,7 +78,9 @@ CATALOGO_KPIS = {
     "capacidad_ahorro_ic95_sup_pct": (NEGOCIO, "%", "Limite superior del intervalo de confianza 95% (bootstrap) de la capacidad de ahorro", None, None),
     "endeudamiento_mensual_mediana_pct": (NEGOCIO, "%", "Pago mensual de deuda / ingreso mensual, mediana de clientes con prestamo. Meta: < 36%", UMBRAL_ENDEUDAMIENTO * 100, "mayor"),
     "pct_clientes_endeudamiento_alto": (NEGOCIO, "%", "% de clientes con prestamo que destinan mas del 36% de su ingreso a deuda", 25.0, "mayor"),
-    "varianza_ingresos_gastos": (NEGOCIO, "coef. variacion", "Volatilidad de ingresos/gastos en 3-6 meses. SIN DATOS: el dataset no trae historial mensual por cliente (ver gold_schema.yml)", None, None),
+    "varianza_ingresos_gastos": (NEGOCIO, "%", "Cliente demo: variacion mensual (coef. de variacion, ultimos 6 meses) del ingreso o el gasto, el que mas varie. Meta: < 30% (estable). Mide 1 cliente con historial, no la cartera", 30.0, "mayor"),
+    "cv_ingreso_6m_pct": (NEGOCIO, "%", "Cliente demo: coeficiente de variacion del ingreso mensual, ultimos 6 meses", None, None),
+    "cv_gasto_6m_pct": (NEGOCIO, "%", "Cliente demo: coeficiente de variacion del gasto mensual, ultimos 6 meses", None, None),
     "indice_riesgo_consolidado_promedio": (NEGOCIO, "puntos 0-100", "Promedio del indice ponderado (endeudamiento 30%, PD 30%, ahorro 20%, credit score 20%)", 40.0, "mayor"),
     "pct_clientes_semaforo_bajo": (NEGOCIO, "%", "% de clientes con indice consolidado < 40 (verde)", None, None),
     "pct_clientes_semaforo_medio": (NEGOCIO, "%", "% de clientes con indice consolidado 40-70 (amarillo)", None, None),
@@ -86,7 +88,7 @@ CATALOGO_KPIS = {
     # --- Riesgo financiero ---
     "tasa_incumplimiento_historica_pct": (RIESGO, "%", "% de incumplimiento observado en loan_default_risk (dato real, no modelado)", None, None),
     "probabilidad_incumplimiento_promedio_pct": (RIESGO, "%", "PD promedio de la cartera segun el modelo de riesgo", 30.0, "mayor"),
-    "pct_clientes_riesgo_alto": (RIESGO, "%", "% de clientes con riesgo_flag = Alto (PD >= 0.5)", 20.0, "mayor"),
+    "pct_clientes_riesgo_alto": (RIESGO, "%", "% de clientes con riesgo_flag = Alto (PD >= umbral del modelo vigente)", 20.0, "mayor"),
     "credit_score_promedio": (RIESGO, "puntos", "Credit score promedio de la cartera", 670.0, "menor"),
     "pct_clientes_subprime": (RIESGO, "%", "% de clientes con credit score < 580 (banda 'Bajo')", 20.0, "mayor"),
     "dti_mediana": (RIESGO, "ratio", "Mediana de debt_to_income_ratio (columna original del dataset: deuda total vs ingreso, NO el pago mensual) entre clientes con prestamo", None, None),
@@ -204,8 +206,11 @@ def kpis_riesgo(fact: pd.DataFrame, df_loan_default: pd.DataFrame | None, metric
     dti = con_prestamo["debt_to_income_ratio"].dropna()
 
     tasa_historica = None
-    if df_loan_default is not None and "Loan_Default_Risk" in df_loan_default.columns and len(df_loan_default):
-        tasa_historica = round(float(df_loan_default["Loan_Default_Risk"].mean()) * 100, 2)
+    if df_loan_default is not None and len(df_loan_default):
+        # credit_risk (S15) trae loan_status; loan_default_risk (S11) Loan_Default_Risk
+        columna = next((c for c in ["loan_status", "Loan_Default_Risk"] if c in df_loan_default.columns), None)
+        if columna:
+            tasa_historica = round(float(df_loan_default[columna].mean()) * 100, 2)
 
     return {
         "tasa_incumplimiento_historica_pct": tasa_historica,
@@ -254,7 +259,7 @@ def kpis_comportamiento(fact: pd.DataFrame) -> dict:
     }
 
 
-def kpis_negocio(vista: pd.DataFrame) -> dict:
+def kpis_negocio(vista: pd.DataFrame, estabilidad: dict | None = None) -> dict:
     """Los 4 KPIs de la lamina "KPI Negocio"."""
     n = len(vista)
     ic_inf, ic_sup = intervalo_confianza_mediana(vista["tasa_ahorro"])
@@ -272,8 +277,11 @@ def kpis_negocio(vista: pd.DataFrame) -> dict:
         "pct_clientes_endeudamiento_alto": (
             _pct((endeudamiento > UMBRAL_ENDEUDAMIENTO).sum(), len(endeudamiento)) if hay_endeudamiento else None
         ),
-        # Pendiente de una fuente con historial mensual por cliente.
-        "varianza_ingresos_gastos": None,
+        # Cliente demo (transacciones mensuales, ver prediccion_financiera.py);
+        # sin esa fuente queda SIN_DATOS.
+        "varianza_ingresos_gastos": (estabilidad or {}).get("cv_6m_peor_pct"),
+        "cv_ingreso_6m_pct": (estabilidad or {}).get("cv_ingreso_6m_pct"),
+        "cv_gasto_6m_pct": (estabilidad or {}).get("cv_gasto_6m_pct"),
         "indice_riesgo_consolidado_promedio": _redondear(vista["indice_riesgo_consolidado"].mean()),
         "pct_clientes_semaforo_bajo": _pct((semaforo == "Bajo").sum(), n),
         "pct_clientes_semaforo_medio": _pct((semaforo == "Medio").sum(), n),
@@ -293,18 +301,51 @@ def _estado(valor, umbral, alerta_si) -> str:
     return "ALERTA" if valor < umbral else "OK"
 
 
+def brecha_meta(valor, umbral, alerta_si) -> float | None:
+    """Distancia a la meta en las unidades del KPI, con signo de negocio:
+    positiva = margen (se cumple con holgura), negativa = lo que falta."""
+    if valor is None or pd.isna(valor) or umbral is None:
+        return None
+    return round(float(umbral - valor if alerta_si == "mayor" else valor - umbral), 4)
+
+
+def avance_meta(valor, umbral, alerta_si) -> float | None:
+    """% de avance hacia la meta (100 = cumplida). Para metas "minimo X"
+    es valor / meta; para metas "maximo X" es meta / valor."""
+    if valor is None or pd.isna(valor) or umbral is None:
+        return None
+    if alerta_si == "mayor":  # la meta es no pasar de `umbral`
+        avance = 100.0 if valor <= umbral else umbral / valor * 100
+    else:  # la meta es llegar al menos a `umbral`
+        avance = 100.0 if valor >= umbral else max(valor, 0) / umbral * 100
+    return round(float(min(max(avance, 0.0), 100.0)), 1)
+
+
+def _texto_meta(umbral, alerta_si, unidad: str) -> str | None:
+    if umbral is None:
+        return None
+    signo = "<=" if alerta_si == "mayor" else ">="
+    sufijo = {"%": "%", "meses": " meses", "USD": " USD", "puntos": " puntos"}.get(unidad, "")
+    return f"{signo} {umbral:g}{sufijo}"
+
+
 def calcular_kpis_globales(
     tablas: dict[str, pd.DataFrame],
     fecha: str,
     df_loan_default: pd.DataFrame | None = None,
     metricas_modelo: dict | None = None,
+    estabilidad: dict | None = None,
 ) -> pd.DataFrame:
-    """Regresa gold_kpis_financieros: un renglon por KPI (formato largo)."""
+    """Regresa gold_kpis_financieros: un renglon por KPI (formato largo).
+
+    Cada indicador CON meta es un KPI y trae: valor actual, meta, brecha
+    (cuanto falta o cuanto sobra) y % de avance hacia la meta. Los que no
+    tienen meta son metricas de contexto (tipo_indicador = "Metrica")."""
     fact = tablas["fact_posicion_financiera"]
     vista = vista_analitica(tablas)
 
     valores = {
-        **kpis_negocio(vista),
+        **kpis_negocio(vista, estabilidad),
         **kpis_riesgo(fact, df_loan_default, metricas_modelo),
         **kpis_exposicion(vista),
         **kpis_comportamiento(fact),
@@ -318,9 +359,13 @@ def calcular_kpis_globales(
                 "fecha": fecha,
                 "categoria": categoria,
                 "kpi": kpi,
+                "tipo_indicador": "KPI" if umbral is not None else "Metrica",
                 "valor": None if valor is None else float(valor),
                 "unidad": unidad,
                 "umbral": umbral,
+                "meta": _texto_meta(umbral, alerta_si, unidad),
+                "brecha": brecha_meta(valor, umbral, alerta_si),
+                "avance_meta_pct": avance_meta(valor, umbral, alerta_si),
                 "estado": _estado(valor, umbral, alerta_si),
                 "descripcion": descripcion,
             }
@@ -425,10 +470,24 @@ def calcular_kpis_particion(fecha: str) -> dict:
         for nombre in TABLAS_ESTRELLA
     }
 
-    # Tasa de incumplimiento real (target historico del modelo)
-    df_loan_default = pd.read_parquet(
-        f"s3://{SILVER_BUCKET}/loan_default_risk/{fecha}/valid", storage_options=STORAGE_OPTIONS
-    )
+    # Tasa de incumplimiento real (target historico): credit_risk si ya se
+    # incorporo (S15); si no, loan_default_risk (S11).
+    df_loan_default = None
+    for fuente in ["credit_risk", "loan_default_risk"]:
+        try:
+            df_loan_default = pd.read_parquet(
+                f"s3://{SILVER_BUCKET}/{fuente}/{fecha}/valid", storage_options=STORAGE_OPTIONS
+            )
+            break
+        except FileNotFoundError:
+            continue
+
+    # Estabilidad del cliente demo (S15), si se pronostico para esta fecha
+    estabilidad = None
+    ruta_pronostico = f"{GOLD_BUCKET}/_pronostico_metadata/{fecha.replace('/', '-')}.json"
+    if fs.exists(ruta_pronostico):
+        with fs.open(ruta_pronostico, "r") as f:
+            estabilidad = json.load(f).get("estabilidad")
 
     # Metricas del modelo (AUC) que construir_gold ya dejo en _gold_metadata
     ruta_metadata = f"{GOLD_BUCKET}/_gold_metadata/{fecha.replace('/', '-')}.json"
@@ -437,7 +496,7 @@ def calcular_kpis_particion(fecha: str) -> dict:
         with fs.open(ruta_metadata, "r") as f:
             metricas_modelo = json.load(f).get("modelo")
 
-    df_kpis = calcular_kpis_globales(tablas, fecha, df_loan_default, metricas_modelo)
+    df_kpis = calcular_kpis_globales(tablas, fecha, df_loan_default, metricas_modelo, estabilidad)
     df_segmento = calcular_kpis_por_segmento(tablas, fecha)
 
     df_kpis.to_parquet(
