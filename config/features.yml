@@ -1,0 +1,154 @@
+# config/features.yml
+#
+# Semana 14: contrato de features del modelo de riesgo crediticio.
+#
+# Fuente unica de verdad de QUE variables usa el modelo, COMO se calculan
+# en cada lado (entrenamiento = credit_risk etiquetado; cartera =
+# personal_finance_ml, los clientes a calificar) y POR QUE se excluyen las
+# demas. Implementacion: scripts/features.py (una prueba verifica que el
+# codigo y este archivo digan lo mismo).
+#
+# Principio clave -- paridad entrenamiento / calificacion: una variable solo
+# puede entrar al modelo si se puede calcular IGUAL en los dos datasets.
+# Por eso se usan ratios y posiciones relativas (no dolares absolutos de
+# poblaciones distintas).
+#
+# Alineacion por cuantiles: las features numericas de la cartera se
+# traducen al valor del entrenamiento con el MISMO percentil antes de
+# calificar (en la cartera el prestamo llega a varias veces el ingreso
+# anual; en el entrenamiento nunca pasa de 0.83). El grado se alinea igual
+# desde el credit_score. El cambio de distribucion se mide con PSI.
+
+version_contrato: 1
+responsable: data-engineering
+target:
+  nombre: impago
+  origen: "credit_risk.loan_status (1 = incumplio)"
+
+features:
+
+  ratio_prestamo_ingreso:
+    uso: modelo
+    tipo: numerica
+    monotonia: 1            # a mayor ratio, mayor riesgo (se exige en el modelo)
+    unidad: "fraccion del ingreso anual"
+    rango_valido: [0, 5]
+    entrenamiento: "loan_amnt / person_income"
+    cartera: "loan_amount_usd / (monthly_income_usd * 12)"
+    descripcion: "Que tan grande es el prestamo respecto al ingreso anual"
+
+  ingreso_anual_log:
+    uso: modelo
+    tipo: numerica
+    monotonia: 0
+    unidad: "log(USD)"
+    rango_valido: [0, 20]
+    entrenamiento: "log(1 + person_income)"
+    cartera: "log(1 + monthly_income_usd * 12)"
+    descripcion: "Ingreso anual en escala logaritmica (reduce el efecto de valores extremos)"
+
+  monto_prestamo_log:
+    uso: modelo
+    tipo: numerica
+    monotonia: 0
+    unidad: "log(USD)"
+    rango_valido: [0, 20]
+    entrenamiento: "log(1 + loan_amnt)"
+    cartera: "log(1 + loan_amount_usd)"
+    descripcion: "Monto del prestamo en escala logaritmica"
+
+  tasa_interes:
+    uso: modelo
+    tipo: numerica
+    monotonia: 1
+    unidad: "% anual"
+    rango_valido: [0, 40]
+    nulos_permitidos: true  # ~10% nulos en credit_risk; el modelo los trata como categoria propia
+    entrenamiento: "loan_int_rate"
+    cartera: "loan_interest_rate_pct (si existe en Silver; si no, nulo)"
+    descripcion: "Tasa de interes del prestamo"
+
+  grado_credito:
+    uso: modelo
+    tipo: ordinal
+    monotonia: 1            # 1 = A (mejor) ... 7 = G (peor)
+    unidad: "1-7"
+    rango_valido: [1, 7]
+    entrenamiento: "loan_grade A..G -> 1..7"
+    cartera: >
+      Mapeo por cuantiles del credit_score: se asigna a cada cliente el grado
+      que ocupa la MISMA posicion relativa en la distribucion de grados del
+      entrenamiento (el mejor 33% de scores -> A, etc.). Es un proxy
+      documentado: la cartera no tiene "loan_grade" y el entrenamiento no
+      tiene "credit_score"; asi el historial crediticio entra al modelo.
+    descripcion: "Calidad crediticia (proxy en la cartera)"
+
+  proposito:
+    uso: modelo
+    tipo: categorica
+    monotonia: 0
+    unidad: "categoria"
+    entrenamiento: "loan_intent traducido"
+    cartera: "loan_type traducido; valores sin equivalente -> OTRO (efecto neutro)"
+    mapeo_entrenamiento:
+      EDUCATION: EDUCACION
+      MEDICAL: SALUD
+      VENTURE: NEGOCIO
+      PERSONAL: PERSONAL
+      DEBTCONSOLIDATION: CONSOLIDACION_DEUDA
+      HOMEIMPROVEMENT: VIVIENDA
+    mapeo_cartera:
+      Education: EDUCACION
+      Medical: SALUD
+      Business: NEGOCIO
+      Personal: PERSONAL
+      Car: PERSONAL
+      Debt Consolidation: CONSOLIDACION_DEUDA
+      Home: VIVIENDA
+      Mortgage: VIVIENDA
+    descripcion: "Para que se pidio el prestamo"
+
+  # --- Candidatas evaluadas pero EXCLUIDAS (se reporta su IV por transparencia) ---
+  edad:
+    uso: excluida
+    razon: "atributo protegido: no se usa para decidir credito; solo para auditar sesgo"
+    sensible: true
+    entrenamiento: "person_age"
+
+  genero:
+    uso: excluida
+    razon: "atributo protegido: no existe en el entrenamiento y no debe usarse; solo para auditar sesgo en la cartera"
+    sensible: true
+    cartera: "gender"
+
+  antiguedad_laboral:
+    uso: excluida
+    razon: "no existe en la cartera (rompe la paridad entrenamiento/calificacion)"
+    entrenamiento: "person_emp_length"
+
+  anios_historial_credito:
+    uso: excluida
+    razon: "no existe en la cartera"
+    entrenamiento: "cb_person_cred_hist_length"
+
+  impago_previo:
+    uso: excluida
+    razon: "no existe en la cartera"
+    entrenamiento: "cb_person_default_on_file (Y/N)"
+
+  renta_vivienda:
+    uso: excluida
+    razon: "no existe en la cartera"
+    entrenamiento: "person_home_ownership == RENT"
+
+seleccion:
+  iv_minimo: 0.02           # por debajo: sin poder predictivo
+  iv_sospechoso: 0.5        # por encima: revisar posible fuga de informacion
+  correlacion_maxima: 0.8   # |Spearman| entre dos variables: se queda la de mayor IV
+  bins: 10
+
+particion:
+  semilla: 42
+  entrenamiento: 0.70
+  validacion: 0.15          # se usa para calibrar probabilidades
+  prueba: 0.15              # evaluacion final (nunca se usa para ajustar nada)

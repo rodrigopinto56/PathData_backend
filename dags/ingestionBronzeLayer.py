@@ -14,7 +14,7 @@ import pendulum
 import pandas as pd
 
 from airflow.decorators import dag, task
-from airflow.exceptions import AirflowFailException
+from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.operators.python import get_current_context
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 
@@ -46,6 +46,22 @@ RAW_SOURCES = {
             "user_id", "monthly_income_usd", "has_loan", "loan_type",
             "loan_amount_usd", "debt_to_income_ratio", "credit_score",
         ],
+    },
+    # Semana 14: fuentes para IA (opcionales: si el CSV no se ha descargado
+    # con scripts/downloadRawData.py, la tarea se marca "skipped" en vez de
+    # fallar, y el resto de la malla sigue igual).
+    "credit_risk": {
+        "path": f"{RAW_DIR}/credit_risk_dataset.csv",
+        "expected_columns": [
+            "person_age", "person_income", "loan_intent", "loan_grade",
+            "loan_amnt", "loan_int_rate", "loan_status", "loan_percent_income",
+        ],
+        "opcional": True,
+    },
+    "transacciones_cliente_demo": {
+        "path": f"{RAW_DIR}/personal_finance_transactions.csv",
+        "expected_columns": ["Date", "Category", "Amount", "Type"],
+        "opcional": True,
     },
 }
 
@@ -98,6 +114,15 @@ def ingesta_bronze_dag():
     def extraer_y_validar(fuente: str) -> dict:
         inicio = pendulum.now("America/Mexico_City")
         config = RAW_SOURCES[fuente]
+        if config.get("opcional") and not os.path.exists(config["path"]):
+            registrar_evento({
+                "nivel": "INFO", "task": "extraer_y_validar", "fuente": fuente,
+                "resultado": "omitida", "detalle": "fuente opcional no descargada",
+            })
+            raise AirflowSkipException(
+                f"Fuente opcional '{fuente}' sin descargar ({config['path']}); "
+                "corre scripts/downloadRawData.py para incluirla."
+            )
         df = pd.read_csv(config["path"])
 
         faltantes = [c for c in config["expected_columns"] if c not in df.columns]
