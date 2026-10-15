@@ -122,6 +122,15 @@ def traducir(valor: str) -> str:
     return TRADUCCION_VALORES.get(str(valor), str(valor))
 
 
+def mes_legible(mes: str) -> str:
+    """'2025-01' -> 'ene 2025'."""
+    try:
+        anio, numero = str(mes).split("-")[:2]
+        return f"{MESES[int(numero) - 1]} {anio}"
+    except (ValueError, IndexError):
+        return str(mes)
+
+
 def fecha_legible(fecha: str) -> str:
     """'2026/09/22' -> '22 sep 2026'."""
     try:
@@ -148,8 +157,29 @@ def _total_clientes(segmentos: pd.DataFrame) -> float | None:
     return float(por_region["num_clientes"].sum()) if not por_region.empty else None
 
 
-def _tarjetas(v: dict, e: dict) -> list[dict]:
+def _avances(kpis: pd.DataFrame) -> tuple[dict, dict]:
+    """% de avance y brecha por KPI (columnas nuevas de la S14-S15; las
+    particiones viejas no las traen y se regresa vacio)."""
+    tabla = kpis.drop_duplicates("kpi", keep="last").set_index("kpi")
+    avance = tabla["avance_meta_pct"].to_dict() if "avance_meta_pct" in tabla else {}
+    brecha = tabla["brecha"].to_dict() if "brecha" in tabla else {}
+    limpiar = lambda d: {k: (None if pd.isna(x) else float(x)) for k, x in d.items()}  # noqa: E731
+    return limpiar(avance), limpiar(brecha)
+
+
+def texto_brecha(brecha, unidad_puntos: str = "pts") -> str:
+    """'Faltan 4.4 pts para la meta' / 'Cumple con 17 pts de margen'."""
+    if not _hay(brecha):
+        return ""
+    if brecha >= 0:
+        return f"Cumple con {abs(brecha):.1f} {unidad_puntos} de margen"
+    return f"Faltan {abs(brecha):.1f} {unidad_puntos} para la meta"
+
+
+def _tarjetas(v: dict, e: dict, avance: dict | None = None, brecha: dict | None = None) -> list[dict]:
+    avance, brecha = avance or {}, brecha or {}
     ahorro = v.get("capacidad_ahorro_mediana_pct")
+    estabilidad = v.get("varianza_ingresos_gastos")
     endeudamiento = v.get("endeudamiento_mensual_mediana_pct")
     indice = v.get("indice_riesgo_consolidado_promedio")
 
@@ -168,6 +198,8 @@ def _tarjetas(v: dict, e: dict) -> list[dict]:
                 if _hay(v.get("capacidad_ahorro_ic95_inf_pct")) else ""
             ),
             "estado": ESTADO_NEGOCIO.get(e.get("capacidad_ahorro_mediana_pct"), SIN_DATOS),
+            "avance": avance.get("capacidad_ahorro_mediana_pct"),
+            "brecha": texto_brecha(brecha.get("capacidad_ahorro_mediana_pct")),
         },
         {
             "titulo": "Endeudamiento mensual",
@@ -182,6 +214,8 @@ def _tarjetas(v: dict, e: dict) -> list[dict]:
                 if _hay(v.get("pct_clientes_endeudamiento_alto")) else ""
             ),
             "estado": ESTADO_NEGOCIO.get(e.get("endeudamiento_mensual_mediana_pct"), SIN_DATOS),
+            "avance": avance.get("endeudamiento_mensual_mediana_pct"),
+            "brecha": texto_brecha(brecha.get("endeudamiento_mensual_mediana_pct")),
         },
         {
             "titulo": "Índice de riesgo",
@@ -190,14 +224,23 @@ def _tarjetas(v: dict, e: dict) -> list[dict]:
             "meta": "Meta: menos de 40",
             "nota": "",
             "estado": ESTADO_NEGOCIO.get(e.get("indice_riesgo_consolidado_promedio"), SIN_DATOS),
+            "avance": avance.get("indice_riesgo_consolidado_promedio"),
+            "brecha": texto_brecha(brecha.get("indice_riesgo_consolidado_promedio"), "puntos"),
         },
         {
             "titulo": "Estabilidad de ingresos y gastos",
-            "valor": "Pendiente",
-            "explicacion": "Mide si los ingresos y gastos del cliente cambian mucho mes a mes. Requiere de 3 a 6 meses de historial por cliente, que hoy no tenemos.",
-            "meta": "Meta: tendencia estable",
-            "nota": "Se incorporará en una siguiente fase",
+            "valor": fmt_pct(estabilidad, 0) if _hay(estabilidad) else "Pendiente",
+            "explicacion": (
+                f"Cliente demo (5 años de historial): sus ingresos o gastos cambian en promedio "
+                f"±{estabilidad:.0f}% de un mes a otro."
+                if _hay(estabilidad)
+                else "Mide si los ingresos y gastos del cliente cambian mucho mes a mes. Requiere de 3 a 6 meses de historial por cliente, que hoy no tenemos."
+            ),
+            "meta": "Meta: variación menor a 30%",
+            "nota": "Medido en 1 cliente demo, no en la cartera" if _hay(estabilidad) else "Se incorporará en una siguiente fase",
             "estado": ESTADO_NEGOCIO.get(e.get("varianza_ingresos_gastos"), SIN_DATOS),
+            "avance": avance.get("varianza_ingresos_gastos"),
+            "brecha": texto_brecha(brecha.get("varianza_ingresos_gastos")),
         },
     ]
 
@@ -347,7 +390,7 @@ def resumen_ejecutivo(kpis: pd.DataFrame, segmentos: pd.DataFrame | None = None)
         "fecha": str(kpis["fecha"].iloc[0]),
         "total_clientes": total,
         "diagnostico": _diagnostico(v, e, total),
-        "tarjetas": _tarjetas(v, e),
+        "tarjetas": _tarjetas(v, e, *_avances(kpis)),
         "semaforo": [
             {
                 "nivel": nivel,
@@ -410,6 +453,19 @@ def _chip(estado: str) -> str:
     )
 
 
+def barra_avance(tarjeta: dict) -> str:
+    """Barra de % de avance hacia la meta + texto de la brecha (HTML)."""
+    avance = tarjeta.get("avance")
+    if not _hay(avance):
+        return ""
+    color = COLOR_ESTADO.get(tarjeta["estado"], COLOR_ESTADO[SIN_DATOS])
+    return (
+        f'<div class="prog" role="img" aria-label="Avance hacia la meta: {avance:.0f}%">'
+        f'<span style="width:{avance:.0f}%;background:{color}"></span></div>'
+        f'<p class="prog-txt">{avance:.0f}% de la meta · {_e(tarjeta.get("brecha", ""))}</p>'
+    )
+
+
 def generar_reporte_html(resumen: dict, segmentos: pd.DataFrame | None = None) -> str:
     """HTML autocontenido (sin JavaScript ni recursos externos): se puede
     mandar por correo, abrir en cualquier navegador e imprimir a PDF."""
@@ -418,6 +474,7 @@ def generar_reporte_html(resumen: dict, segmentos: pd.DataFrame | None = None) -
               {_chip(t['estado'])}<h3 style="margin-top:8px">{_e(t['titulo'])}</h3>
               <div class="big">{_e(t['valor'])}</div>
               <p>{_e(t['explicacion'])}</p>
+              {barra_avance(t)}
               <p class="muted">{_e(t['meta'])}{' · ' + _e(t['nota']) if t['nota'] else ''}</p>
             </div>"""
         for t in resumen["tarjetas"]
@@ -485,6 +542,9 @@ def generar_reporte_html(resumen: dict, segmentos: pd.DataFrame | None = None) -
   .card {{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }}
   .card-top {{ display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }}
   .card p {{ margin:6px 0 0; font-size:13px; }}
+  .prog {{ height:6px; background:var(--line); border-radius:3px; margin-top:10px; overflow:hidden; }}
+  .prog span {{ display:block; height:100%; border-radius:3px; }}
+  .prog-txt {{ font-size:12px !important; color:var(--ink-2); margin-top:4px !important; font-variant-numeric:tabular-nums; }}
   .big {{ font-size:30px; font-weight:600; margin-top:8px; letter-spacing:-0.02em; font-variant-numeric:tabular-nums lining-nums; }}
   .chip {{ display:inline-flex; align-items:center; gap:5px; border:1.5px solid; border-radius:999px; padding:1px 8px 1px 2px; font-size:12px; white-space:nowrap; }}
   .dot {{ display:inline-grid; place-items:center; width:16px; height:16px; border-radius:50%; color:#fff; font-size:11px; font-weight:700; }}

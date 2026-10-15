@@ -133,10 +133,10 @@ def test_kpis_globales_completos(tablas):
     assert set(kpis["categoria"]) == {
         "kpis_negocio", "riesgo_financiero", "exposicion", "comportamiento_transaccional",
     }
-    # El unico KPI sin datos es la varianza (no hay historial mensual)
+    # Sin transacciones del cliente demo, solo la estabilidad queda sin datos
     sin_datos = kpis[kpis["valor"].isna()]
-    assert sin_datos["kpi"].tolist() == ["varianza_ingresos_gastos"]
-    assert sin_datos["estado"].tolist() == ["SIN_DATOS"]
+    assert sin_datos["kpi"].tolist() == ["varianza_ingresos_gastos", "cv_ingreso_6m_pct", "cv_gasto_6m_pct"]
+    assert set(sin_datos["estado"]) == {"SIN_DATOS"}
     assert set(kpis["estado"]) <= {"OK", "ALERTA", "INFO", "SIN_DATOS"}
 
     valores = dict(zip(kpis["kpi"], kpis["valor"]))
@@ -240,3 +240,41 @@ def test_kpis_de_negocio_calculados(tablas):
     assert kpis.loc["capacidad_ahorro_mediana_pct", "valor"] <= kpis.loc["capacidad_ahorro_ic95_sup_pct", "valor"]
     semaforo = kpis.loc[["pct_clientes_semaforo_bajo", "pct_clientes_semaforo_medio", "pct_clientes_semaforo_alto"], "valor"]
     assert semaforo.sum() == pytest.approx(100, abs=0.1)
+
+
+# ---------------------------------------------------------------------------
+# Meta, brecha y % de avance (pedido del mentor) + estabilidad (S15)
+# ---------------------------------------------------------------------------
+def test_kpi_vs_metrica_y_avance(tablas):
+    kpis = calcular_kpis_globales(tablas, FECHA).set_index("kpi")
+    con_meta = kpis[kpis["umbral"].notna()]
+    assert (con_meta["tipo_indicador"] == "KPI").all()
+    assert (kpis.loc[kpis["umbral"].isna(), "tipo_indicador"] == "Metrica").all()
+    calculados = con_meta[con_meta["valor"].notna()]
+    assert calculados["avance_meta_pct"].between(0, 100).all()
+    # Cumplir la meta <=> avance 100 <=> brecha >= 0
+    cumplen = calculados["estado"] == "OK"
+    assert (calculados.loc[cumplen, "avance_meta_pct"] == 100).all()
+    assert (calculados.loc[cumplen, "brecha"] >= 0).all()
+    assert (calculados.loc[~cumplen, "brecha"] < 0).all()
+
+
+def test_brecha_y_avance_en_ambas_direcciones():
+    from kpis_financieros import avance_meta, brecha_meta
+
+    # Meta "al menos 20%": con 15% faltan 5 puntos y el avance es 75%
+    assert brecha_meta(15.0, 20.0, "menor") == -5.0
+    assert avance_meta(15.0, 20.0, "menor") == 75.0
+    # Meta "maximo 36%": con 45% sobran 9 puntos; avance = 36/45 = 80%
+    assert brecha_meta(45.0, 36.0, "mayor") == -9.0
+    assert avance_meta(45.0, 36.0, "mayor") == 80.0
+    assert avance_meta(19.0, 36.0, "mayor") == 100.0
+    assert brecha_meta(None, 36.0, "mayor") is None
+
+
+def test_estabilidad_del_cliente_demo_entra_al_kpi(tablas):
+    estabilidad = {"cv_6m_peor_pct": 49.4, "cv_ingreso_6m_pct": 49.4, "cv_gasto_6m_pct": 26.8}
+    kpis = calcular_kpis_globales(tablas, FECHA, estabilidad=estabilidad).set_index("kpi")
+    assert kpis.loc["varianza_ingresos_gastos", "valor"] == 49.4
+    assert kpis.loc["varianza_ingresos_gastos", "estado"] == "ALERTA"  # meta < 30%
+    assert kpis.loc["cv_gasto_6m_pct", "estado"] == "INFO"

@@ -26,15 +26,24 @@
 | D20 | 12 | Medianas para montos con cola larga | Promedios | El promedio se distorsiona por pocos valores extremos |
 | D21 | 12 | Endeudamiento con pago mensual (mensualidad o amortización) | Usar `debt_to_income_ratio` | Esa columna mide deuda total (mediana 1.35), no el pago mensual |
 | D22 | 12 | `SIN_DATOS` explícito para la varianza | Simular series mensuales | No presentar datos inventados como reales |
+| D23 | 14 | Entrenar con `credit_risk` (etiquetado) | Seguir con `loan_default_risk` / inventar etiqueta con reglas | 297 filas no alcanzan; una etiqueta por reglas es circular |
+| D24 | 14 | Paridad de features entrenamiento/cartera | Usar todas las variables con IV alto | Una variable que no existe al calificar rompe el modelo en producción |
+| D25 | 14 | Alineación por cuantiles de la cartera | Calificar con valores crudos | PSI > 1: sin alinear, toda la cartera caería en el extremo riesgoso |
+| D26 | 14 | Excluir género y edad del modelo; usarlos para auditar | Incluirlos si tienen IV | Equidad y regulación de crédito |
+| D27 | 15 | Scorecard salvo que el retador gane por ≥ 0.02 de AUC | Elegir siempre el de mayor AUC | Explicabilidad; diferencias pequeñas no compensan perderla |
+| D28 | 15 | Calibrar (Platt) y re-escalar a una tasa objetivo | Usar la probabilidad cruda | El entrenamiento tiene ~22% de impago; una cartera típica, ~5% |
+| D29 | 15 | DAG de entrenamiento separado + registro campeón/retador | Re-entrenar en cada corrida diaria | Saber qué modelo está en producción y no degradarlo sin querer |
+| D30 | 15 | Pronóstico con modelos simples + backtesting vs. baseline | Modelos complejos (ARIMA, redes) | 60 puntos de historia; un modelo que no le gana al baseline no se usa |
 
 ## 2. Limitaciones conocidas
 
 | Limitación | Impacto | Mitigación / siguiente paso |
 |---|---|---|
-| **El modelo de riesgo solo usa monto del préstamo y ahorro** | El riesgo casi no cambia con el credit score (pérdida esperada ~41% en todas las bandas) y concentra el "riesgo alto" en préstamos grandes (94.7% de la exposición) | El credit score entra al **índice consolidado**. Siguiente paso: buscar un dataset de entrenamiento con score. |
-| **Entrenamiento e inferencia en datasets distintos** | La PD es relativa (posición del cliente en su distribución), no una probabilidad calibrada | Documentado en `gold_schema.yml`. Requiere datos reales de incumplimiento de la misma cartera. |
-| **El modelo se re-entrena en cada corrida** | Sin versionado de modelos | Separar entrenamiento e inferencia; registrar modelos (p. ej. MLflow). |
-| **Sin historial por cliente** (una foto por cliente; las particiones diarias recargan los mismos datos) | `varianza_ingresos_gastos` en `SIN_DATOS`; no hay tendencias reales | Evaluar `ramyapintchy/personal-finance-data` (transacciones con fecha) como "cliente demo" del gemelo digital. |
+| ~~El modelo solo usa monto y ahorro; no reacciona al credit score~~ | **Resuelto en S15:** grado de crédito (proxy del credit score) como variable, con monotonía verificada | — |
+| **Entrenamiento y cartera son poblaciones distintas** | No se puede medir el AUC sobre la cartera (no tiene etiqueta); el riesgo es relativo a la propia cartera | Calibración + tasa objetivo + PSI documentado. Definitivo: datos de impago reales de la misma cartera. |
+| ~~El modelo se re-entrena en cada corrida, sin versión~~ | **Resuelto en S15:** DAG de entrenamiento + registro campeón/retador | — |
+| **Historial mensual solo de un cliente demo** | La estabilidad y el pronóstico no representan a la cartera | Etiquetado como "cliente demo" en todo el tablero. Definitivo: historial transaccional por cliente. |
+| **Grado de crédito de la cartera es un proxy** | Supone que el orden del credit score equivale al orden del grado | Documentado en el contrato de features y en la ficha del modelo. |
 | **Datos sintéticos** | 0% deficitarios, regiones perfectamente balanceadas (HHI = 0.200) | Interpretar los KPIs como demostración del pipeline, no como hallazgos de negocio. |
 | **Pesos del índice consolidado por criterio experto** | No calibrados contra incumplimientos reales | Ajustables en `PESOS_INDICE_RIESGO`; calibrar cuando existan datos. |
 | **LGD fija de 45%** | La pérdida esperada es una aproximación regulatoria | Reemplazar por una LGD observada. |
@@ -49,5 +58,7 @@
 | Media | Código duplicado entre DAGs | `registrar_evento` y la configuración de MinIO se repiten en varios archivos | Extraer un módulo común (p. ej. `scripts/comun.py`). |
 | Media | `data/validar_conteos_silver.py` | Copia suelta en `data/`, fuera del flujo | Eliminarla o moverla a `scripts/`. |
 | Baja | Fechas de prueba fijas en `validar_calidad_silver.py` | `FECHAS_PRUEBA = ["2026/09/01", "2026/09/02"]` en modo CLI | Recibir la fecha como argumento. |
-| Baja | Pruebas solo para Gold | Silver y la ingesta no tienen pruebas unitarias | Agregar pruebas de los limpiadores de Spark con datos sintéticos. |
+| Baja | Pruebas solo para Gold e IA | Silver y la ingesta no tienen pruebas unitarias (los limpiadores nuevos de S14 se probaron con Spark local, pero no hay prueba automática) | Agregar pruebas de los limpiadores de Spark con datos sintéticos. |
+| Media | Artefactos `joblib` en MinIO | Deserializar un modelo ejecuta código: el bucket `ml-models` debe ser escribible solo por el pipeline | Políticas de MinIO por rol (ver deuda de credenciales). |
+| Baja | Versión de scikit-learn sin fijar en `Dockerfile` | Un modelo serializado con una versión puede no cargar con otra | Fijar la versión al estabilizar el modelo. |
 | Baja | Aviso de pandas en la Vista 3 | `groupby().apply()` sobre columnas de agrupación (`FutureWarning`) | Usar `include_groups=False` o agregar con `agg`. |

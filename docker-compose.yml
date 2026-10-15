@@ -13,6 +13,7 @@ x-airflow-common: &airflow-common
     BRONZE_BUCKET: "bronze-layer"
     SILVER_BUCKET: "silver-layer"
     GOLD_BUCKET: "gold-layer"
+    ML_BUCKET: "ml-models"
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -122,6 +123,7 @@ services:
       MINIO_ROOT_PASSWORD: "password123"
       SILVER_BUCKET: "silver-layer"
       GOLD_BUCKET: "gold-layer"
+      ML_BUCKET: "ml-models"
     volumes:
       - ./data:/app/data
     depends_on:
@@ -143,6 +145,7 @@ services:
       MINIO_ROOT_USER: "admin"
       MINIO_ROOT_PASSWORD: "password123"
       GOLD_BUCKET: "gold-layer"
+      ML_BUCKET: "ml-models"
     depends_on:
       - minio
     restart: unless-stopped

@@ -1,6 +1,10 @@
 # ---------------------------------------------------------------------------
 # Modelo de riesgo de incumplimiento
 # ---------------------------------------------------------------------------
+# NOTA (Semana 15): este modelo quedo como RESPALDO. El modelo vigente se
+# entrena aparte (entrenamiento_modelo_dag) y se configura en
+# config/modelo_credito.yml; ver docs/08_dataset_ia_y_modelo.md.
+# construir_gold usa este solo si todavia no hay un campeon registrado.
 modelo_riesgo:
   algoritmo: "LogisticRegression (scikit-learn)"
   razon_algoritmo: >

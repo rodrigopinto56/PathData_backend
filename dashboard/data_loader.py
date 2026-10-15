@@ -36,6 +36,8 @@ MINIO_KEY = os.getenv("MINIO_ROOT_USER", "admin")
 MINIO_SECRET = os.getenv("MINIO_ROOT_PASSWORD", "password123")
 SILVER_BUCKET = os.getenv("SILVER_BUCKET", "silver-layer")
 GOLD_BUCKET = os.getenv("GOLD_BUCKET", "gold-layer")
+ML_BUCKET = os.getenv("ML_BUCKET", "ml-models")
+RUTA_MODELO_RIESGO = f"{ML_BUCKET}/riesgo_credito"
 
 # Ruta local del log de eventos. Se monta desde el host con el mismo
 # volumen ./data que ya usan tus otros contenedores (ver docker-compose.yml,
@@ -203,8 +205,11 @@ def cargar_gold_metadata_modelo() -> pd.DataFrame:
         filas.append(
             {
                 "fecha": metadata.get("fecha"),
+                "origen": modelo.get("origen", "modelo_s11"),
+                "version": modelo.get("version"),
                 "accuracy": modelo.get("accuracy"),
                 "auc": modelo.get("auc"),
+                "gini": modelo.get("gini"),
                 "filas_entrenamiento": modelo.get("filas_entrenamiento"),
                 "filas_prueba": modelo.get("filas_prueba"),
                 "clientes_calificados": metadata.get("gold_clientes_riesgo", {}).get("filas"),
@@ -296,9 +301,75 @@ def cargar_clientes_particion(fecha: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     columnas_cliente = [c for c in ["user_id", "age", "employment_status"] if c in clientes.columns]
-    return fact.merge(regiones, on="region_id", how="left").merge(
+    detalle = fact.merge(regiones, on="region_id", how="left").merge(
         clientes[columnas_cliente], on="user_id", how="left"
     )
+    # Semana 15: razones y puntaje del modelo (estan en gold_clientes_riesgo)
+    riesgo = cargar_tabla_particion("gold_clientes_riesgo", fecha)
+    extras = [c for c in ["razones_riesgo", "puntaje_riesgo", "grado_credito_proxy"] if c in riesgo.columns]
+    if extras:
+        detalle = detalle.merge(riesgo[["user_id", *extras]], on="user_id", how="left")
+    return detalle
+
+
+def cargar_tabla_particion(tabla: str, fecha: str) -> pd.DataFrame:
+    """Una tabla de gold-layer para UNA fecha (vacia si no existe)."""
+    try:
+        return pd.read_parquet(
+            f"s3://{GOLD_BUCKET}/{tabla}/{fecha}/data.parquet", storage_options=_storage_options()
+        )
+    except FileNotFoundError:
+        return pd.DataFrame()
+
+
+def cargar_metadata_gold(carpeta: str, fecha: str) -> dict:
+    """_gold_metadata, _pronostico_metadata, _features_metadata... de una fecha."""
+    return _leer_json(_fs(), f"{GOLD_BUCKET}/{carpeta}/{fecha.replace('/', '-')}.json") or {}
+
+
+# ---------------------------------------------------------------------------
+# Registro de modelos (Semana 15) -- solo lectura de JSON/CSV, nunca se
+# deserializa el modelo en el dashboard.
+# ---------------------------------------------------------------------------
+def cargar_modelo_campeon() -> dict:
+    """{'campeon': {...}, 'card': {...}, 'tabla_puntos': DataFrame} o {} si no hay."""
+    fs = _fs()
+    campeon = _leer_json(fs, f"{RUTA_MODELO_RIESGO}/campeon.json")
+    if not campeon:
+        return {}
+    version = campeon["version"]
+    card = _leer_json(fs, f"{RUTA_MODELO_RIESGO}/{version}/model_card.json") or {}
+    try:
+        with fs.open(f"{RUTA_MODELO_RIESGO}/{version}/tabla_puntos.csv", "r") as f:
+            tabla_puntos = pd.read_csv(f)
+    except FileNotFoundError:
+        tabla_puntos = pd.DataFrame()
+    return {"campeon": campeon, "card": card, "tabla_puntos": tabla_puntos}
+
+
+def cargar_historial_modelos() -> pd.DataFrame:
+    """Una fila por version entrenada (promovida o no)."""
+    fs = _fs()
+    if not fs.exists(RUTA_MODELO_RIESGO):
+        return pd.DataFrame()
+    filas = []
+    for ruta in fs.find(RUTA_MODELO_RIESGO):
+        if not ruta.endswith("model_card.json"):
+            continue
+        card = _leer_json(fs, ruta) or {}
+        prueba = card.get("metricas_prueba", {})
+        filas.append({
+            "version": card.get("version"),
+            "entrenado_en": card.get("entrenado_en"),
+            "modelo": card.get("modelo_elegido"),
+            "auc": prueba.get("auc"),
+            "gini": prueba.get("gini"),
+            "ks": prueba.get("ks"),
+            "brier": prueba.get("brier"),
+            "promovido": card.get("promovido"),
+            "razon": card.get("razon_promocion"),
+        })
+    return pd.DataFrame(filas).sort_values("version", ascending=False) if filas else pd.DataFrame()
 
 
 def _storage_options() -> dict:

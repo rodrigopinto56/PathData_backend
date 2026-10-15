@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -67,19 +68,29 @@ def construir_expectativas(df_ge, columnas: list[dict]) -> None:
             df_ge.expect_column_values_to_not_be_null(nombre)
 
         regla = col.get("regla", "")
+        rango = re.search(r"entre\s+(-?[\d.]+)\s+y\s+(-?[\d.]+)", regla)
+        conjunto = re.search(r"en\s*\{([^}]*)\}", regla)
 
+        # Los nulos se ignoran en estas expectativas (Great Expectations no
+        # evalua nulos en reglas de rango/conjunto); la nulabilidad se
+        # valida aparte con expect_column_values_to_not_be_null.
         if ">= 0" in regla:
             df_ge.expect_column_values_to_be_between(nombre, min_value=0, mostly=1.0)
         elif "> 0" in regla:
             df_ge.expect_column_values_to_be_between(
                 nombre, min_value=0, strict_min=True, mostly=1.0
             )
-        elif "entre 300 y 850" in regla or "300 y 850" in regla:
-            df_ge.expect_column_values_to_be_between(nombre, min_value=300, max_value=850)
-        elif "en {0, 1}" in regla:
-            df_ge.expect_column_values_to_be_in_set(nombre, [0, 1])
+        elif rango:
+            df_ge.expect_column_values_to_be_between(
+                nombre, min_value=float(rango.group(1)), max_value=float(rango.group(2))
+            )
         elif "en {Si, No}" in regla or "en {Yes, No}" in regla:
             df_ge.expect_column_values_to_be_in_set(nombre, ["Si", "No", "Yes"])
+        elif conjunto:
+            valores = [v.strip() for v in conjunto.group(1).split(",")]
+            if all(v.lstrip("-").isdigit() for v in valores):
+                valores = [int(v) for v in valores]
+            df_ge.expect_column_values_to_be_in_set(nombre, valores)
 
 
 def validar_particion(fuente: str, fecha: str) -> dict:

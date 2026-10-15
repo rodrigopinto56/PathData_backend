@@ -10,6 +10,8 @@ Estructura del archivo (de arriba a abajo):
   4) Vista 3: Riesgo de credito     (Semana 11 - capa Gold)
   5) Vista 4: KPIs financieros      (Semana 12 - riesgo, exposicion,
                                      comportamiento transaccional)
+  6) Vista 5: Modelo de riesgo e IA (Semanas 14-15 - dataset de features,
+                                     candidatos, calibracion, equidad, PSI)
 
 Cada vista es una funcion aparte para que crezcan sin pisarse entre si.
 """
@@ -28,6 +30,9 @@ from data_loader import (
     cargar_gold_clientes_riesgo,
     cargar_gold_kpis,
     cargar_gold_kpis_segmento,
+    cargar_historial_modelos,
+    cargar_modelo_campeon,
+    cargar_tabla_particion,
 )
 
 # --- Paleta fija del proyecto (misma en toda vista, nunca improvisada) ---
@@ -393,7 +398,11 @@ def seccion_riesgo_credito() -> None:
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Clientes calificados", f"{total_clientes:,}")
     col2.metric("% en riesgo alto", f"{pct_riesgo_alto}%" if pct_riesgo_alto is not None else "N/D")
-    col3.metric("Accuracy del modelo", f"{ultima_corrida['accuracy']:.0%}")
+    # El modelo S15 reporta Gini (estandar de riesgos); el de S11, accuracy
+    if pd.notna(ultima_corrida.get("gini")):
+        col3.metric("Gini del modelo", f"{ultima_corrida['gini']:.2f}", help=f"Modelo {ultima_corrida.get('version')}")
+    else:
+        col3.metric("Accuracy del modelo", f"{ultima_corrida['accuracy']:.0%}")
     col4.metric("AUC del modelo", f"{ultima_corrida['auc']:.3f}")
 
     # --- % de riesgo alto por banda de credit score (ordinal) ---
@@ -518,7 +527,9 @@ def seccion_kpis_financieros() -> None:
         for i, fila in enumerate(del_grupo.itertuples()):
             delta = None
             if fila.estado in ("OK", "ALERTA") and pd.notna(fila.umbral):
-                delta = f"{'fuera de' if fila.estado == 'ALERTA' else 'dentro de'} umbral ({_formatear_kpi(fila.umbral, fila.unidad)})"
+                avance = getattr(fila, "avance_meta_pct", None)
+                avance_txt = f" · {avance:.0f}% de la meta" if avance is not None and pd.notna(avance) else ""
+                delta = f"{'fuera de' if fila.estado == 'ALERTA' else 'dentro de'} meta ({_formatear_kpi(fila.umbral, fila.unidad)}){avance_txt}"
             elif fila.estado == "SIN_DATOS":
                 delta = "sin datos - ver ayuda (?)"
             columnas[i % 4].metric(
@@ -701,10 +712,13 @@ def seccion_resumen_ejecutivo() -> None:
 
     if not gold_metadata.empty:
         ultima = gold_metadata.sort_values("fecha").iloc[-1]
+        calidad = (
+            f"Gini {ultima['gini']:.2f}" if pd.notna(ultima.get("gini")) else f"accuracy {ultima['accuracy']:.0%}"
+        )
         puntos.append(
-            f"**Modelo de riesgo:** entrenado sobre {int(ultima['filas_entrenamiento'])} "
-            f"casos, accuracy {ultima['accuracy']:.0%} y AUC {ultima['auc']:.3f} en la "
-            f"corrida mas reciente ({ultima['fecha']}) - {int(ultima['clientes_calificados']):,} "
+            f"**Modelo de riesgo{' ' + str(ultima['version']) if pd.notna(ultima.get('version')) else ''}:** "
+            f"entrenado sobre {int(ultima['filas_entrenamiento']):,} casos, {calidad} y AUC {ultima['auc']:.3f} "
+            f"en la corrida mas reciente ({ultima['fecha']}) - {int(ultima['clientes_calificados']):,} "
             f"clientes calificados."
         )
 
@@ -752,6 +766,136 @@ def seccion_resumen_ejecutivo() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 7) Vista 5: Modelo de riesgo y dataset de IA (Semanas 14-15)
+# ---------------------------------------------------------------------------
+@st.cache_data(ttl=60)
+def _modelo_campeon_cacheado() -> dict:
+    return cargar_modelo_campeon()
+
+
+@st.cache_data(ttl=60)
+def _historial_modelos_cacheado() -> pd.DataFrame:
+    return cargar_historial_modelos()
+
+
+def seccion_modelo_ia() -> None:
+    st.header("Vista 5 - Modelo de riesgo y dataset de IA")
+    st.caption(
+        "De donde sale esto: entrenamiento_modelo_dag construye el dataset de features (S14) y entrena, "
+        "evalua y registra el modelo (S15) en ml-models/riesgo_credito/. Gold solo carga el campeon."
+    )
+
+    registro = _modelo_campeon_cacheado()
+    if not registro:
+        st.info(
+            "Todavia no hay un modelo registrado. Descarga credit_risk con scripts/downloadRawData.py, "
+            "corre la malla Bronze/Silver y despues entrenamiento_modelo_dag."
+        )
+        return
+
+    card = registro["card"]
+    prueba = card.get("metricas_prueba", {})
+    col1, col2, col3, col4, col5 = st.columns(5)
+    version = str(card.get("version", ""))
+    fecha_version = f"{version[7:9]}/{version[5:7]}/{version[1:5]}" if len(version) >= 9 else "N/D"
+    col1.metric("Campeon (entrenado)", fecha_version, help=f"{version} - {registro['campeon'].get('razon')}")
+    col2.metric("Modelo", card.get("modelo_elegido", "N/D"), help=card.get("razon_eleccion"))
+    col3.metric("AUC (prueba)", f"{prueba.get('auc', float('nan')):.3f}")
+    col4.metric("Gini (prueba)", f"{prueba.get('gini', float('nan')):.3f}", help="Gini = 2 x AUC - 1 (estandar de riesgos)")
+    col5.metric("KS (prueba)", f"{prueba.get('ks', float('nan')):.3f}", help="Maxima separacion entre buenos y malos")
+
+    # --- Candidatos ---
+    st.subheader("Candidatos evaluados")
+    filas = []
+    for nombre, c in card.get("candidatos", {}).items():
+        cv = c["validacion_cruzada"]
+        filas.append({
+            "candidato": nombre,
+            "AUC CV (media ± desv.)": f"{cv['auc']['media']:.3f} ± {cv['auc']['desviacion']:.3f}",
+            "Gini CV": f"{cv['gini']['media']:.3f}",
+            "AUC prueba": c["prueba"]["auc"],
+            "Brier prueba": c["prueba"]["brier"],
+            "elegido": "si" if nombre == card.get("modelo_elegido") else "",
+        })
+    st.dataframe(pd.DataFrame(filas), hide_index=True, use_container_width=True)
+    st.caption(f"Eleccion: {card.get('razon_eleccion')}. Promocion: {card.get('razon_promocion')}.")
+
+    col_a, col_b = st.columns(2)
+    # --- Curva de calibracion: prediccion vs realidad por decil ---
+    with col_a:
+        st.subheader("Calibracion (prueba)")
+        curva = pd.DataFrame(card.get("candidatos", {}).get(card.get("modelo_elegido"), {}).get("curva_calibracion", []))
+        if not curva.empty:
+            fig = px.scatter(
+                curva, x="pd_predicha", y="tasa_real", size="clientes",
+                labels={"pd_predicha": "PD predicha", "tasa_real": "Impago real"},
+            )
+            fig.update_traces(marker_color=COLOR_SERIE_PRINCIPAL)
+            limite = float(max(curva["pd_predicha"].max(), curva["tasa_real"].max()) * 1.05)
+            fig.add_shape(type="line", x0=0, y0=0, x1=limite, y1=limite, line=dict(color=TEXTO_SECUNDARIO, dash="dot"))
+            st.plotly_chart(_tema_oscuro(fig, mostrar_leyenda=False), use_container_width=True)
+            st.caption("Sobre la diagonal = el modelo acierta la tasa de impago de cada grupo.")
+
+    # --- Coeficientes de la scorecard (que pesa cada variable) ---
+    with col_b:
+        st.subheader("Peso de cada variable")
+        coeficientes = card.get("coeficientes_scorecard", {})
+        if coeficientes:
+            tabla_coef = pd.DataFrame({"variable": list(coeficientes), "coeficiente": list(coeficientes.values())})
+            fig_coef = px.bar(
+                tabla_coef.sort_values("coeficiente"), x="coeficiente", y="variable", orientation="h",
+                labels={"coeficiente": "Coeficiente sobre WoE (scorecard)", "variable": ""},
+            )
+            fig_coef.update_traces(marker_color=COLOR_SERIE_PRINCIPAL)
+            st.plotly_chart(_tema_oscuro(fig_coef, mostrar_leyenda=False), use_container_width=True)
+            st.caption("Mayor coeficiente = la variable separa mejor a quien paga de quien no.")
+
+    # --- Seleccion de variables (IV) --- a ancho completo y con altura fija:
+    # dentro de una columna angosta, Streamlit entra en un ciclo de redibujado.
+    st.subheader("Seleccion de variables (Information Value)")
+    fecha_dataset = (card.get("dataset") or {}).get("fecha")
+    reporte = cargar_tabla_particion("reporte_seleccion_variables", fecha_dataset) if fecha_dataset else pd.DataFrame()
+    if reporte.empty:
+        reporte = pd.DataFrame(card.get("features_excluidas", []))
+    else:
+        reporte = reporte[["variable", "iv", "fuerza", "decision", "razon"]]
+    st.dataframe(reporte, hide_index=True, use_container_width=True, height=36 * (len(reporte) + 1) + 4)
+
+    # --- Pruebas de negocio, equidad y deriva ---
+    col_c, col_d, col_e = st.columns(3)
+    with col_c:
+        st.subheader("Pruebas de negocio")
+        for variable, resultado in card.get("pruebas_monotonia", {}).items():
+            icono = "✓" if resultado["exito"] else "✕"
+            st.markdown(f"{icono} **{variable}**: el riesgo {'sube' if resultado['exito'] else 'NO sube'} al empeorar")
+    with col_d:
+        st.subheader("Equidad (regla 4/5)")
+        for nombre, auditoria in (card.get("equidad") or {}).items():
+            if auditoria:
+                icono = "✓" if auditoria["cumple_regla_4_5"] else "✕"
+                st.markdown(f"{icono} **{nombre.replace('_', ' ')}**: ratio de aprobacion {auditoria['ratio_aprobacion']:.2f}")
+        st.caption("Genero y edad NO son variables del modelo; solo se usan para auditar sesgo.")
+    with col_e:
+        st.subheader("Cambio de distribucion (PSI)")
+        psi = (card.get("evaluacion_cartera") or {}).get("psi_sin_alinear", {})
+        if psi:
+            tabla_psi = pd.DataFrame({"variable": list(psi), "PSI sin alinear": list(psi.values())})
+            st.dataframe(tabla_psi, hide_index=True, use_container_width=True)
+            st.caption("PSI > 0.25 = la cartera es muy distinta al entrenamiento; por eso se alinea por cuantiles.")
+
+    # --- Tabla de puntos e historial ---
+    with st.expander("Tabla de puntos de la scorecard"):
+        st.dataframe(registro["tabla_puntos"], hide_index=True, use_container_width=True)
+    historial = _historial_modelos_cacheado()
+    if not historial.empty:
+        with st.expander(f"Historial de versiones ({len(historial)})"):
+            st.dataframe(historial, hide_index=True, use_container_width=True)
+    with st.expander("Limitaciones documentadas"):
+        for limitacion in card.get("limitaciones", []):
+            st.markdown(f"- {limitacion}")
+
+
+# ---------------------------------------------------------------------------
 # Layout general
 # ---------------------------------------------------------------------------
 seccion_chequeo_configuracion()
@@ -764,3 +908,5 @@ st.divider()
 seccion_riesgo_credito()
 st.divider()
 seccion_kpis_financieros()
+st.divider()
+seccion_modelo_ia()

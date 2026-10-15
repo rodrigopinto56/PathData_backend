@@ -22,6 +22,7 @@ import sys
 import pendulum
 
 from airflow.decorators import dag, task
+from airflow.exceptions import AirflowSkipException
 from airflow.operators.python import get_current_context
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
@@ -38,7 +39,10 @@ S3_CONN_ID = os.getenv("BRONZE_S3_CONN_ID", "minio_s3_conn")
 STAGING_DIR = "/opt/airflow/data/tmp/silver_staging"
 LOG_EVENTS_PATH = "/opt/airflow/data/reports/pipeline_log.jsonl"
 
-FUENTES = ["loan_default_risk", "personal_finance_ml"]
+FUENTES = ["loan_default_risk", "personal_finance_ml", "credit_risk", "transacciones_cliente_demo"]
+# Semana 14: si una fuente opcional no llego a Bronze ese dia, su cadena se
+# marca "skipped" en vez de fallar (ver ingesta_bronze_dag).
+FUENTES_OPCIONALES = {"credit_risk", "transacciones_cliente_demo"}
 
 default_args = {
     "owner": "data-engineering",
@@ -82,6 +86,8 @@ def transformacion_silver_dag():
 
         hook = S3Hook(aws_conn_id=S3_CONN_ID)
         key = f"{fuente}/{particion}/data.parquet"
+        if fuente in FUENTES_OPCIONALES and not hook.check_for_key(key, bucket_name=BRONZE_BUCKET):
+            raise AirflowSkipException(f"Fuente opcional '{fuente}' sin particion Bronze {particion}.")
 
         destino_local = f"{STAGING_DIR}/{fuente}/{particion}/data.parquet"
         os.makedirs(os.path.dirname(destino_local), exist_ok=True)

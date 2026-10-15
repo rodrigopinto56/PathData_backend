@@ -24,6 +24,22 @@ DATASETS = {
         "kaggle_id": "miadul/personal-finance-ml-dataset",
         "archivo_origen": "synthetic_personal_finance_dataset.csv",
     },
+    # Semana 14: fuentes para IA. Son "opcionales": si la descarga falla,
+    # se avisa y se sigue con las demas (el pipeline las salta si no estan).
+    # Riesgo crediticio etiquetado (~32K prestamos con loan_status 0/1):
+    # base para entrenar el modelo predictivo de la Semana 15.
+    "credit_risk_dataset.csv": {
+        "kaggle_id": "laotse/credit-risk-dataset",
+        "archivo_origen": "credit_risk_dataset.csv",
+        "opcional": True,
+    },
+    # Transacciones de un cliente (60 meses): serie de tiempo para la
+    # prediccion financiera y el KPI de estabilidad (cliente demo).
+    "personal_finance_transactions.csv": {
+        "kaggle_id": "ramyapintchy/personal-finance-data",
+        "archivo_origen": "Personal_Finance_Dataset.csv",
+        "opcional": True,
+    },
 }
 
 
@@ -42,14 +58,20 @@ def main() -> None:
 
     for nombre_local, cfg in DATASETS.items():
         print(f"Descargando {cfg['kaggle_id']} ...")
-        ruta_cache = Path(kagglehub.dataset_download(cfg["kaggle_id"]))
-        origen = ruta_cache / cfg["archivo_origen"]
-
-        if not origen.exists():
-            raise FileNotFoundError(
-                f"No se encontro '{cfg['archivo_origen']}' en {ruta_cache}. "
-                f"Revisa el nombre exacto del archivo dentro del dataset de Kaggle."
-            )
+        try:
+            ruta_cache = Path(kagglehub.dataset_download(cfg["kaggle_id"]))
+            origen = ruta_cache / cfg["archivo_origen"]
+            if not origen.exists():
+                encontrados = [p.name for p in ruta_cache.glob("*.csv")]
+                raise FileNotFoundError(
+                    f"No se encontro '{cfg['archivo_origen']}' en {ruta_cache} "
+                    f"(CSVs encontrados: {encontrados}). Revisa el nombre exacto del archivo."
+                )
+        except Exception as error:  # noqa: BLE001 - se re-lanza si la fuente es obligatoria
+            if not cfg.get("opcional"):
+                raise
+            print(f"  AVISO: se omite la fuente opcional {nombre_local}: {error}")
+            continue
 
         destino = RAW_DIR / nombre_local
         shutil.copyfile(origen, destino)

@@ -60,3 +60,64 @@ fuentes:
         tipo: double
         nulable: true
         regla: "outliers esperados (distribucion bimodal, ver notas_calidad en dataCatalog.yml)"
+  # -------------------------------------------------------------------------
+  # Semana 14: fuentes para IA (opcionales; ver ingesta_bronze_dag)
+  # -------------------------------------------------------------------------
+  credit_risk:
+    descripcion: "Prestamos etiquetados (loan_status 0/1) para entrenar el modelo predictivo de riesgo"
+    origen: "kaggle laotse/credit-risk-dataset"
+    llave_deduplicacion: null      # sin identificador: se deduplica por fila completa
+    estrategia_dedup: "fila_completa"
+    columnas:
+      - nombre: loan_status
+        tipo: integer
+        nulable: false
+        regla: "en {0, 1}"
+      - nombre: person_age
+        tipo: double
+        nulable: false
+        regla: "entre 18 y 100"
+      - nombre: person_income
+        tipo: double
+        nulable: false
+        regla: "> 0"
+      - nombre: loan_amnt
+        tipo: double
+        nulable: false
+        regla: "> 0"
+      - nombre: loan_percent_income
+        tipo: double
+        nulable: false
+        regla: "entre 0 y 1"
+      - nombre: person_emp_length
+        tipo: double
+        nulable: true
+        regla: "entre 0 y 60"
+      - nombre: loan_int_rate
+        tipo: double
+        nulable: true
+        regla: "entre 0 y 40"
+      - nombre: loan_grade
+        tipo: string
+        nulable: false
+        regla: "en {A, B, C, D, E, F, G}"
+
+  transacciones_cliente_demo:
+    descripcion: "Transacciones de un solo cliente (60 meses) para prediccion financiera y KPI de estabilidad"
+    origen: "kaggle ramyapintchy/personal-finance-data"
+    llave_deduplicacion: null
+    estrategia_dedup: "fila_completa"
+    renombre_columnas: {Date: fecha, Transaction Description: descripcion, Category: categoria, Amount: monto, Type: tipo}
+    columnas:
+      - nombre: fecha
+        tipo: date
+        nulable: false
+        regla: "fecha valida"
+      - nombre: monto
+        tipo: double
+        nulable: false
+        regla: "> 0"
+      - nombre: tipo
+        tipo: string
+        nulable: false
+        regla: "en {Income, Expense}"
