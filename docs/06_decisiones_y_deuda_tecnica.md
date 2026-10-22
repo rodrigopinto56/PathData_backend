@@ -34,6 +34,9 @@
 | D28 | 15 | Calibrar (Platt) y re-escalar a una tasa objetivo | Usar la probabilidad cruda | El entrenamiento tiene ~22% de impago; una cartera típica, ~5% |
 | D29 | 15 | DAG de entrenamiento separado + registro campeón/retador | Re-entrenar en cada corrida diaria | Saber qué modelo está en producción y no degradarlo sin querer |
 | D30 | 15 | Pronóstico con modelos simples + backtesting vs. baseline | Modelos complejos (ARIMA, redes) | 60 puntos de historia; un modelo que no le gana al baseline no se usa |
+| D31 | 16 | Monte Carlo con modelo de un factor de Vasicek (Basilea) | Impagos independientes; cópulas más complejas | Es el estándar regulatorio; sin correlación se subestima la cola. Se valida contra la fórmula cerrada |
+| D32 | 16 | Bootstrap de meses reales para el cliente demo | Simular ingreso y gasto con distribuciones normales | No supone una forma de la distribución y conserva la relación ingreso–gasto del mismo mes |
+| D33 | 16 | Sensor "mismo día" propio en vez de `ExternalTaskSensor` | `ExternalTaskSensor` con fecha lógica exacta | Los disparos manuales tienen fecha lógica a la hora del clic y el sensor estándar esperaba una corrida inexistente |
 
 ## 2. Limitaciones conocidas
 
@@ -47,6 +50,8 @@
 | **Datos sintéticos** | 0% deficitarios, regiones perfectamente balanceadas (HHI = 0.200) | Interpretar los KPIs como demostración del pipeline, no como hallazgos de negocio. |
 | **Pesos del índice consolidado por criterio experto** | No calibrados contra incumplimientos reales | Ajustables en `PESOS_INDICE_RIESGO`; calibrar cuando existan datos. |
 | **LGD fija de 45%** | La pérdida esperada es una aproximación regulatoria | Reemplazar por una LGD observada. |
+| **Escenarios de estrés por supuesto de negocio** (×1.5, ×2.5) | No son un pronóstico macroeconómico | Configurables en `config/simulador.yml`; ligarlos a variables macro (desempleo, tasas) en una versión futura. |
+| **Ahorro inicial del cliente demo supuesto** (3 meses de gasto) | La probabilidad de quedarse sin ahorro depende de ese supuesto | Ajustable en el dashboard; definitivo: saldo real de la cuenta. |
 
 ## 3. Deuda técnica
 

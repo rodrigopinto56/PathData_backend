@@ -7,11 +7,16 @@ RUN pip install --no-cache-dir \
     pandas \
     s3fs \
     plotly \
-    pyyaml
+    pyyaml \
+    scipy
 
 COPY dashboard/ /app/
 # Semana 13: logica de negocio compartida con el reporte que publica el DAG
 COPY scripts/reporte_ejecutivo.py /app/
+# Semana 16: el simulador corre en vivo en el dashboard (mismo codigo y
+# configuracion que la tarea simular_escenarios del DAG)
+COPY scripts/simulador_montecarlo.py /app/
+COPY config/simulador.yml /app/
 
 EXPOSE 8501
 

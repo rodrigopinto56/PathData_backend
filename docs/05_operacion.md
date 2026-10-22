@@ -110,7 +110,7 @@ docker compose exec airflow-scheduler bash -c "cd /opt/airflow/scripts && python
 
 `construir_gold.py` debe correr primero: escribe las tablas `dim_*` y `fact_*` que lee `kpis_financieros.py`.
 Pasos sueltos de IA (mismo contenedor y carpeta): `python features.py 2026/10/19`, `python modelo_credito.py 2026/10/19`
-y `python prediccion_financiera.py 2026/10/19`.
+`python prediccion_financiera.py 2026/10/19` y `python simulador_montecarlo.py 2026/10/19` (después del pronóstico).
 Para regenerar solo el reporte ejecutivo de una fecha: `python reporte_ejecutivo.py 2026/09/22` (mismo contenedor y carpeta).
 
 ### 3.3 Validaciones manuales
@@ -125,16 +125,17 @@ python scripts/bronzeHealth.py
 ## 4. Pruebas
 
 ```powershell
-pip install pandas pyarrow scikit-learn pytest
+pip install pandas pyarrow scikit-learn scipy pyyaml pytest
 pytest tests/
 ```
 
-58 pruebas en 4 archivos (`test_gold_kpis.py`, `test_reporte_ejecutivo.py`, `test_modelo_credito.py`, `test_prediccion_financiera.py`).
+70 pruebas en 5 archivos (`test_gold_kpis.py`, `test_reporte_ejecutivo.py`, `test_modelo_credito.py`, `test_prediccion_financiera.py`, `test_simulador_montecarlo.py`).
 Usan datos sintéticos con el esquema real (`tests/datos_sinteticos.py`) y no necesitan Docker ni descargas. Cubren:
 - **Modelo estrella**: tablas completas, integridad referencial, detección de FK huérfanas, grano, miembro "Sin prestamo", normalización y pérdida esperada.
 - **KPIs**: catálogo completo, cuadre de la exposición con la tabla de hechos, semáforo de umbrales y cuadre de segmentos contra el total.
 - **Dataset y modelo (S14–S15)**: paridad contrato/código, atributos protegidos fuera del modelo, WoE/IV, binning monótono, alineación por cuantiles, calibración, ajuste de tasa base, pruebas de negocio, registro campeón/retador (un retador peor no reemplaza al campeón).
 - **Pronóstico (S15)**: series mensuales, backtesting sin fuga del futuro, baseline como piso, banda de incertidumbre, estabilidad.
+- **Simulador Monte Carlo (S16)**: pérdida esperada contra la fórmula, VaR contra la fórmula cerrada de Vasicek, efecto de la correlación, orden de los escenarios, reproducibilidad y escenarios del cliente demo.
 - **Dashboard ejecutivo**: reglas del diagnóstico, orden de las acciones, foco de riesgo por región, traducciones y reporte HTML seguro y autocontenido.
 - **KPIs de negocio**: fuente del pago mensual (mensualidad real, amortización o N/D), índice consolidado en sus extremos, intervalo de confianza y suma del semáforo = 100%.
 
@@ -143,7 +144,7 @@ Usan datos sintéticos con el esquema real (`tests/datos_sinteticos.py`) y no ne
 | Qué cambió | Qué hacer |
 |---|---|
 | `dags/`, `scripts/`, `config/`, `src/spark/` | Nada: están montados como volumen. `docker compose restart airflow-scheduler airflow-webserver` si un DAG no refleja el cambio. |
-| `dashboard/` o `scripts/reporte_ejecutivo.py` | Reconstruir: `docker compose build streamlit streamlit-ejecutivo` y `docker compose up -d streamlit streamlit-ejecutivo` (el código se **copia** a la imagen). |
+| `dashboard/`, `scripts/reporte_ejecutivo.py`, `scripts/simulador_montecarlo.py`, `config/simulador.yml` o `Dockerfile.streamlit` | Reconstruir: `docker compose build streamlit streamlit-ejecutivo` y `docker compose up -d streamlit streamlit-ejecutivo` (el código se **copia** a la imagen). |
 | `Dockerfile` (dependencias) | `docker compose build` y `docker compose up -d` |
 
 ## 6. Troubleshooting (problemas reales encontrados)

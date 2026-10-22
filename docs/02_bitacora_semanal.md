@@ -282,3 +282,32 @@ Aparecieron al correr la malla con datos reales: el entrenamiento semanal salía
 - **Entrenamiento con la partición más reciente** (`features.particion_mas_reciente`): la corrida semanal ya no exige que exista la partición de su fecha lógica exacta. Usa la más reciente de `credit_risk` (y de la cartera) hasta el **fin** de su periodo (`data_interval_end`) y lo registra en `particion_origen`. Nunca usa datos posteriores a ese día.
 - **Sensores entre DAGs** (`dags/espera_dags.py`): Silver espera a que Bronze termine con éxito el mismo día, y Gold espera a Silver. Aceptan corridas programadas, backfills y disparos manuales a cualquier hora. Fallan de inmediato si el DAG anterior falló, y se pueden saltar con `{"sin_esperar": true}`.
 - **Validación:** los 4 DAGs cargan sin errores en Airflow 2.9.3. El sensor se probó contra la base de Airflow en 9 casos: sin corrida, corriendo, fallida, exitosa a las 23:59, otro día, y frontera de zona horaria. La prueba `test_particion_mas_reciente` cubre la búsqueda de la partición.
+
+## Semana 16 — Simulador financiero (Monte Carlo)
+
+**Objetivo del plan:** implementar Monte Carlo y un simulador de escenarios.
+
+**Qué se hizo**
+- `scripts/simulador_montecarlo.py` + `config/simulador.yml`: dos simuladores.
+  - **Cartera de crédito:** modelo de un factor de **Vasicek**, el de Basilea. Simula 10,000 años por escenario
+    (base, adverso, severo) con la probabilidad de impago de cada cliente del modelo S15. Calcula pérdida esperada,
+    **VaR** 95/99/99.9%, *expected shortfall*, capital económico y la probabilidad de rebasar el colchón actual.
+  - **Cliente demo:** *bootstrap* de sus meses reales. Simula 5,000 futuros de 12 meses por escenario
+    (inflación, recesión, desempleo) y mide la probabilidad de quedarse sin ahorro y el abanico del saldo.
+- `transformacion_gold_dag`: nueva tarea `simular_escenarios` después del pronóstico. Escribe 4 tablas Gold y `_simulacion_metadata`.
+- **Dashboard ejecutivo:** sección *"Simulador de escenarios"* con dos pestañas.
+  - Tabla de escenarios en lenguaje de negocio, histograma de pérdidas con la línea del colchón y abanico del ahorro.
+  - **Arma tu propio escenario:** sliders que simulan en vivo. La cartera corre 2,000 años en ~1 s; se compara contra una base simulada igual, para que la diferencia no sea ruido.
+- **Pruebas:** 11 nuevas (70 en total), validadas contra la fórmula cerrada de Vasicek/Basilea.
+- **Documentación:** [09 — Simulador Monte Carlo](09_simulador_montecarlo.md).
+
+**Decisiones técnicas**
+- **Vasicek con correlación de Basilea:** sin correlación los impagos serían independientes y la simulación casi nunca mostraría años de crisis. La correlación hace que en un año malo caigan muchos a la vez.
+- **El colchón se mide contra el escenario base:** "reservas + capital" = peor caso 1 de 1,000 de hoy. Así cada escenario responde "¿con qué frecuencia no alcanzaría lo que tenemos?".
+- **Mismo código en el DAG y en el dashboard:** el resultado oficial lo calcula el DAG. El dashboard reutiliza las mismas funciones y el mismo YAML para los escenarios propios.
+- **Semilla fija:** la misma fecha y configuración dan el mismo resultado (auditable).
+
+**Evidencia**
+- La pérdida esperada simulada (5.12% de la exposición) cuadra con el KPI calculado por fórmula (5.10%).
+- Con 17,840 préstamos (tamaño real) la simulación tarda unos 13 s.
+- Con las transacciones reales, el cliente demo gasta más de lo que gana (unos −$6,800 al mes). Aun en el escenario base agota su ahorro supuesto en 79% de los futuros, lo que es coherente con el pronóstico S15.

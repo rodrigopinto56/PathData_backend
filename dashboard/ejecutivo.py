@@ -9,6 +9,7 @@ en lenguaje de negocio cuatro preguntas, en este orden:
   2) ¿Como estan nuestros clientes?  -> semaforo verde / amarillo / rojo
   3) ¿Cuanto dinero esta en juego y donde esta el riesgo?
   4) ¿Que hacemos?                   -> acciones sugeridas + clientes prioritarios
+  5) ¿Y si las cosas se ponen dificiles? -> simulador de escenarios (Semana 16)
 
 Es una app aparte del dashboard tecnico (app.py): mismo origen de datos
 (gold-layer), distinta audiencia. Se sirve en el puerto 8502 con tema
@@ -30,9 +31,11 @@ import streamlit as st
 
 try:
     import reporte_ejecutivo as rep
+    import simulador_montecarlo as sim
 except ModuleNotFoundError:  # ejecucion local fuera del contenedor
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "scripts"))
     import reporte_ejecutivo as rep
+    import simulador_montecarlo as sim
 
 from data_loader import (
     cargar_clientes_particion,
@@ -439,6 +442,237 @@ if not pronostico.empty:
         )
 
 # ---------------------------------------------------------------------------
+# 5) Simulador de escenarios (Semana 16, Monte Carlo)
+# ---------------------------------------------------------------------------
+@st.cache_data(ttl=3600)
+def _config_simulador() -> dict:
+    return sim.cargar_config()
+
+
+@st.cache_data(ttl=600, show_spinner="Simulando 2,000 años posibles…")
+def _simular_cartera_propia(fecha: str, multiplicador_pd: float, lgd: float, correlacion: str) -> dict:
+    config = _config_simulador()["cartera"]
+    pd_, ead = sim.preparar_cartera(_tabla("fact_posicion_financiera", fecha))
+    escenario = {"multiplicador_pd": multiplicador_pd, "lgd": lgd,
+                 "correlacion": correlacion if correlacion == "basilea" else float(correlacion)}
+    resumen, perdidas = sim.simular_escenario_cartera(pd_, ead, escenario, config, config["simulaciones_interactivas"])
+    resumen["perdidas"] = perdidas
+    return resumen
+
+
+def _layout(figura: go.Figure, alto: int, eje_x: dict, eje_y: dict) -> None:
+    figura.update_layout(
+        plot_bgcolor=SURFACE, paper_bgcolor=SURFACE, font_color=TEXTO_2, font_family=FUENTE_TEXTO,
+        hoverlabel=dict(font_family=FUENTE_TEXTO), height=alto, margin=dict(t=56, b=10, l=10, r=10),
+        showlegend=False, xaxis=dict(gridcolor=LINEA, zeroline=False, **eje_x), yaxis=dict(gridcolor=LINEA, **eje_y),
+    )
+
+
+def _linea_referencia(figura: go.Figure, x: float, texto: str, punteada: bool, fila: int) -> None:
+    """Linea vertical con su etiqueta ARRIBA del area de la grafica (fila 0 o 1,
+    para que dos etiquetas cercanas no se encimen ni tapen las barras)."""
+    figura.add_vline(x=x, line_dash="dot" if punteada else "solid", line_color=TEXTO_2 if punteada else TEXTO, line_width=1.5)
+    figura.add_annotation(x=x, y=1.0 + 0.09 * fila, yref="paper", xanchor="left", yanchor="bottom", showarrow=False,
+                          text=f" {texto}", font=dict(color=TEXTO, size=12))
+
+
+def grafica_perdidas(distribucion: pd.DataFrame, esperada: float, colchon: float) -> go.Figure:
+    """Histograma: en cuantos de los anos simulados se perdio cada monto."""
+    centro = (distribucion["desde"] + distribucion["hasta"]) / 2
+    figura = go.Figure(go.Bar(
+        x=centro, y=distribucion["pct_anos"], width=(distribucion["hasta"] - distribucion["desde"]) * 0.92,
+        marker=dict(color=SERIE, cornerradius=3),
+        customdata=distribucion[["desde", "hasta"]].to_numpy(),
+        hovertemplate="Pérdida entre $%{customdata[0]:,.0f} y $%{customdata[1]:,.0f}"
+                      "<br><b>%{y:.1f}% de los años</b><extra></extra>",
+    ))
+    _linea_referencia(figura, colchon, "Colchón actual", False, 0)
+    _linea_referencia(figura, esperada, "Pérdida esperada", True, 1)
+    _layout(figura, 340, dict(title="Pérdida en el año (USD)", tickformat="$~s"), dict(title="% de los años simulados"))
+    return figura
+
+
+def grafica_abanico(abanico: pd.DataFrame, saldo_inicial: float) -> go.Figure:
+    """Abanico de saldo: rango del 90% (claro), del 50% (medio) y mediana."""
+    meses = [0, *abanico["mes"]]
+    def col(c):
+        return [saldo_inicial, *abanico[c]]
+    figura = go.Figure()
+    for bajo, alto, alfa in [("p5", "p95", 0.12), ("p25", "p75", 0.26)]:
+        figura.add_trace(go.Scatter(x=meses + meses[::-1], y=col(alto) + col(bajo)[::-1], fill="toself",
+                                    fillcolor=f"rgba(42,120,214,{alfa})", line=dict(width=0), hoverinfo="skip"))
+    figura.add_trace(go.Scatter(
+        x=meses, y=col("p50"), mode="lines+markers", line=dict(color=SERIE, width=2), marker=dict(size=8),
+        customdata=list(zip(col("p5"), col("p95"))),
+        hovertemplate="Mes %{x}<br><b>Saldo típico: $%{y:,.0f}</b>"
+                      "<br>9 de cada 10 futuros: $%{customdata[0]:,.0f} a $%{customdata[1]:,.0f}<extra></extra>",
+    ))
+    figura.add_hline(y=0, line_color=TEXTO, line_width=1.5)
+    figura.add_annotation(x=0, y=0, xanchor="left", yanchor="bottom", showarrow=False,
+                          text="Sin ahorro", font=dict(color=TEXTO, size=12))
+    _layout(figura, 340, dict(title="Meses a partir de hoy", dtick=1), dict(title="Saldo ahorrado (USD)", tickformat="$,.0f"))
+    return figura
+
+
+def _texto_mes(mes) -> str:
+    return "—" if mes is None or pd.isna(mes) else f"mes {mes:.0f}"
+
+
+st.divider()
+st.subheader("Simulador de escenarios: ¿y si las cosas se ponen difíciles?")
+st.caption(
+    "Simulación Monte Carlo: en lugar de un solo pronóstico, se simulan miles de futuros posibles "
+    "y se cuenta qué tan seguido pasa cada cosa, sobre todo los casos malos."
+)
+simulacion_cartera = _tabla("gold_simulacion_cartera", fecha)
+simulacion_cliente = _tabla("gold_simulacion_cliente_demo_resumen", fecha)
+if simulacion_cartera.empty and simulacion_cliente.empty:
+    st.info("La simulación de escenarios no está disponible para esta fecha. "
+            "Pide al equipo de datos que vuelva a ejecutar transformacion_gold_dag.")
+else:
+    tab_cartera, tab_cliente = st.tabs(["Cartera de crédito", "Cliente demo"])
+
+    with tab_cartera:
+        if simulacion_cartera.empty:
+            st.info("No hay préstamos con probabilidad de impago para simular en esta fecha.")
+        else:
+            escenarios = simulacion_cartera.set_index("escenario")
+            base = escenarios.iloc[0]
+            colchon = base["var_99_9"]  # reservas + capital que aguantan 1 ano de 1,000 en condiciones normales
+            st.markdown(
+                f"Cada escenario simula **{rep.fmt_int(base['simulaciones'])} años posibles** de la cartera "
+                f"({rep.fmt_int(base['prestamos'])} préstamos, {_sin_latex(rep.fmt_usd(base['exposicion_total']))} prestados). "
+                f"El **colchón actual** ({_sin_latex(rep.fmt_usd(colchon))}) es lo que el banco necesita hoy para "
+                "aguantar un año de cada mil: reservas más capital.",
+                unsafe_allow_html=True,
+            )
+            tabla_escenarios = pd.DataFrame({
+                "Escenario": escenarios["nombre"],
+                "Pérdida esperada": escenarios["perdida_esperada"].map(rep.fmt_usd),
+                "Año muy malo (1 de 100)": escenarios["var_99"].map(rep.fmt_usd),
+                "Peor caso (1 de 1,000)": escenarios["var_99_9"].map(rep.fmt_usd),
+                "Prob. de rebasar el colchón": escenarios["prob_superar_colchon_pct"],
+            })
+            st.dataframe(
+                tabla_escenarios, hide_index=True, use_container_width=True,
+                column_config={"Prob. de rebasar el colchón": st.column_config.NumberColumn(format="%.1f%%")},
+            )
+            st.caption(" · ".join(f"**{e['nombre']}:** {e['descripcion']}" for _, e in escenarios.iterrows()))
+            peor = escenarios.iloc[-1]
+            st.markdown(
+                f"**Lectura:** en el escenario **{peor['nombre'].lower()}** la pérdida esperada sube de "
+                f"{_sin_latex(rep.fmt_usd(base['perdida_esperada']))} a {_sin_latex(rep.fmt_usd(peor['perdida_esperada']))} "
+                f"y el colchón actual se rebasaría en **{peor['prob_superar_colchon_pct']:.0f}% de los años**.",
+                unsafe_allow_html=True,
+            )
+
+            distribucion = _tabla("gold_simulacion_cartera_distribucion", fecha)
+            if not distribucion.empty:
+                elegido = st.radio("Distribución de pérdidas del escenario", list(escenarios.index), horizontal=True,
+                                   format_func=lambda e: escenarios.loc[e, "nombre"], key="esc_cartera")
+                st.plotly_chart(
+                    grafica_perdidas(distribucion[distribucion["escenario"] == elegido],
+                                     escenarios.loc[elegido, "perdida_esperada"], colchon),
+                    use_container_width=True,
+                )
+                st.caption("Cada barra: en qué porcentaje de los años simulados se perdió ese monto. "
+                           "Las barras a la derecha del colchón son los años en que no alcanzaría.")
+
+            with st.form("escenario_cartera"):
+                st.markdown("**Arma tu propio escenario**")
+                f1, f2, f3 = st.columns(3)
+                multiplicador = f1.slider("Impagos (veces los actuales)", 0.5, 4.0, 1.0, 0.1,
+                                          help="1.0 = probabilidad de impago que estima hoy el modelo de riesgo.")
+                lgd = f2.slider("Pérdida si un cliente no paga (%)", 20, 90, 45, 5,
+                                help="Parte del préstamo que no se recupera. 45% es el estándar de Basilea.") / 100
+                contagio = f3.select_slider(
+                    "Contagio entre impagos", ["basilea", "0.10", "0.20", "0.30", "0.40"], value="basilea",
+                    format_func=lambda v: "Normal (Basilea)" if v == "basilea" else f"{float(v):.0%}",
+                    help="Qué tanto caen los clientes al mismo tiempo cuando la economía va mal.",
+                )
+                simular = st.form_submit_button("Simular", type="primary")
+            if simular:
+                propio = _simular_cartera_propia(fecha, multiplicador, lgd, contagio)
+                # Se compara contra el escenario base simulado IGUAL (mismos 2,000 anos, misma
+                # semilla): asi la diferencia es solo efecto de los sliders, no ruido de muestreo.
+                base_vivo = _simular_cartera_propia(fecha, 1.0, 0.45, "basilea")
+                prob_colchon = float((propio["perdidas"] > colchon).mean() * 100)
+
+                def _vs_base(campo: str) -> str | None:
+                    diferencia = propio[campo] - base_vivo[campo]
+                    return None if abs(diferencia) < 1 else f"{rep.fmt_usd(diferencia)} vs. base"
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Pérdida esperada", rep.fmt_usd(propio["perdida_esperada"]),
+                          delta=_vs_base("perdida_esperada"), delta_color="inverse")
+                m2.metric("Peor caso (1 de 1,000)", rep.fmt_usd(propio["var_99_9"]),
+                          delta=_vs_base("var_99_9"), delta_color="inverse")
+                m3.metric("Prob. de rebasar el colchón", rep.fmt_pct(prob_colchon))
+                st.caption(f"{rep.fmt_int(propio['simulaciones'])} años simulados en vivo con las probabilidades de impago "
+                           "de cada cliente; el resultado oficial del día (tabla de arriba) usa 10,000.")
+
+    with tab_cliente:
+        abanicos = _tabla("gold_simulacion_cliente_demo", fecha)
+        if simulacion_cliente.empty or abanicos.empty:
+            st.info("La fuente de transacciones del cliente demo no está disponible para esta fecha.")
+        else:
+            esc_cli = simulacion_cliente.set_index("escenario")
+            config_cli = _config_simulador()["cliente_demo"]
+            saldo_inicial = float(esc_cli["saldo_inicial"].iloc[0])
+            st.markdown(
+                f"Cada escenario arma **{rep.fmt_int(esc_cli['simulaciones'].iloc[0])} futuros de "
+                f"{config_cli['horizonte_meses']} meses** con meses reales de su historial (los últimos "
+                f"{config_cli['meses_historia']}) y sigue cuánto le queda ahorrado. Hoy se supone un ahorro de "
+                f"{_sin_latex(rep.fmt_usd(saldo_inicial))} ({config_cli['saldo_inicial_meses_gasto']} meses de su gasto).",
+                unsafe_allow_html=True,
+            )
+            st.dataframe(
+                pd.DataFrame({
+                    "Escenario": esc_cli["nombre"],
+                    "Prob. de quedarse sin ahorro": esc_cli["prob_quedarse_sin_ahorro_pct"],
+                    "Mes típico en que se agota": esc_cli["mes_mediano_agotamiento"].map(_texto_mes),
+                    "Ahorro típico al final": esc_cli["saldo_final_mediana"].map(rep.fmt_usd),
+                }),
+                hide_index=True, use_container_width=True,
+                column_config={"Prob. de quedarse sin ahorro": st.column_config.NumberColumn(format="%.1f%%")},
+            )
+            st.caption(" · ".join(f"**{e['nombre']}:** {e['descripcion']}" for _, e in esc_cli.iterrows()))
+            elegido_cli = st.radio("Ver la evolución del ahorro en el escenario", list(esc_cli.index), horizontal=True,
+                                   format_func=lambda e: esc_cli.loc[e, "nombre"], key="esc_cliente")
+            st.plotly_chart(grafica_abanico(abanicos[abanicos["escenario"] == elegido_cli], saldo_inicial),
+                            use_container_width=True)
+            st.caption("Línea: el saldo típico (la mitad de los futuros queda por arriba y la mitad por abajo). "
+                       "Franja oscura: la mitad de los futuros. Franja clara: 9 de cada 10.")
+
+            if not pronostico.empty:
+                serie_cliente = sim.serie_desde_pronostico(pronostico)
+                with st.form("escenario_cliente"):
+                    st.markdown("**Arma tu propio escenario**")
+                    g1, g2, g3, g4 = st.columns(4)
+                    cambio_ingreso = g1.slider("Cambio en su ingreso (%)", -50, 30, 0, 5) / 100
+                    cambio_gasto = g2.slider("Cambio en su gasto (%)", -30, 50, 0, 5) / 100
+                    sin_ingreso = g3.slider("Meses sin ingreso", 0, 6, 0)
+                    ahorro_hoy = g4.number_input("Ahorro de hoy (USD)", 0, 1_000_000, int(round(saldo_inicial, -3)), 1000)
+                    simular_cli = st.form_submit_button("Simular", type="primary")
+                if simular_cli:
+                    propio = sim.simular_cliente(
+                        serie_cliente,
+                        {"cambio_ingreso": cambio_ingreso, "cambio_gasto": cambio_gasto, "meses_sin_ingreso": sin_ingreso},
+                        config_cli, saldo_inicial=float(ahorro_hoy),
+                    )
+                    k1, k2, k3 = st.columns(3)
+                    k1.metric("Prob. de quedarse sin ahorro", rep.fmt_pct(propio["prob_quedarse_sin_ahorro_pct"]))
+                    k2.metric("Mes típico en que se agota", _texto_mes(propio["mes_mediano_agotamiento"]))
+                    k3.metric("Ahorro típico al final", rep.fmt_usd(propio["saldo_final_mediana"]))
+                    st.plotly_chart(grafica_abanico(propio["abanico"], propio["saldo_inicial"]), use_container_width=True)
+
+            st.caption(
+                "Supuestos: el dataset no trae el ahorro del cliente, por eso se parte de "
+                f"{config_cli['saldo_inicial_meses_gasto']} meses de su gasto (ajustable arriba). Los meses se sortean "
+                "de su historial real, así que no se repite la estacionalidad (p. ej. diciembre)."
+            )
+
+# ---------------------------------------------------------------------------
 # Compartir + glosario
 # ---------------------------------------------------------------------------
 st.divider()
@@ -460,6 +694,9 @@ with st.expander("¿Cómo leer este tablero?"):
 - **Estabilidad de ingresos y gastos:** cuánto cambian el ingreso y el gasto mes a mes (coeficiente de variación de los últimos 6 meses). Se mide en un *cliente demo* con 5 años de historial, porque la cartera no tiene historial mensual.
 - **Avance hacia la meta:** la barra bajo cada indicador muestra qué tan cerca está de su meta (100% = cumplida) y cuántos puntos faltan o sobran.
 - **Probabilidad de impago:** estimada por un modelo de riesgo entrenado con préstamos reales etiquetados y calibrado a una tasa de impago de cartera de 5%.
+- **Simulación Monte Carlo:** se simulan miles de futuros posibles con las probabilidades de cada cliente y se cuenta qué tan seguido pasa cada resultado. El nombre viene del casino de Monte Carlo: la técnica usa el azar, como una ruleta, pero para medir riesgos.
+- **Colchón actual:** reservas más capital que el banco necesita hoy para aguantar un año de cada mil (el peor caso 1 de 1,000 del escenario base). Es el criterio que usa la regulación bancaria (Basilea).
+- **Peor caso (1 de 1,000):** pérdida que solo se supera en uno de cada mil años simulados. **Año muy malo (1 de 100):** igual, pero uno de cada cien.
 - **Fuente:** datos de demostración (dataset público sintético), actualizados cada día por el proceso automático de datos.
         """
     )
