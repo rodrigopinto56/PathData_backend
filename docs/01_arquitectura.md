@@ -91,7 +91,9 @@ Las dos últimas son **opcionales**: si no se descargaron, sus tareas se marcan 
 
 Desde la Semana 15 también existen en `gold-layer`: `gold_features_entrenamiento`, `gold_features_cartera`,
 `reporte_seleccion_variables`, `gold_pronostico_cliente_demo`, `gold_transacciones_mensuales`,
-`_features_metadata/` y `_pronostico_metadata/`. Y un bucket nuevo:
+`_features_metadata/` y `_pronostico_metadata/`. Desde la Semana 16: `gold_simulacion_cartera`,
+`gold_simulacion_cartera_distribucion`, `gold_simulacion_cliente_demo`, `gold_simulacion_cliente_demo_resumen`
+y `_simulacion_metadata/`. Y un bucket nuevo:
 
 ```
 ml-models/riesgo_credito/
@@ -148,8 +150,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    A[construir_gold<br/>califica con el campeón + estrella + integridad] --> P[pronosticar_cliente_demo<br/>S15]
-    P --> B
+    W[esperar_silver<br/>sensor] --> A[construir_gold<br/>califica con el campeón + estrella + integridad]
+    A --> P[pronosticar_cliente_demo<br/>S15]
+    P --> S[simular_escenarios<br/>S16 Monte Carlo]
+    S --> B[calcular_kpis<br/>37 indicadores]
     B --> C[publicar_reporte_ejecutivo<br/>reporte HTML de 1 página]
 ```
 
@@ -161,6 +165,10 @@ flowchart LR
 
 `construir_gold` **no entrena**: carga el modelo campeón del registro (o el de la Semana 11 si aún no hay uno).
 `pronosticar_cliente_demo` (S15) proyecta ingreso, gasto y ahorro del cliente demo y calcula su estabilidad.
+`simular_escenarios` (S16) simula 10,000 años de pérdidas de la cartera por escenario (base/adverso/severo) y
+5,000 futuros del cliente demo (inflación/recesión/desempleo); ver [09](09_simulador_montecarlo.md).
+`esperar_silver` (y `esperar_bronze` en Silver) es un sensor que espera a que el DAG anterior termine con
+éxito el mismo día (`dags/espera_dags.py`).
 
 ### 4.4 `entrenamiento_modelo_dag` — features y modelo (S14–S15, semanal)
 

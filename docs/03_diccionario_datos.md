@@ -155,6 +155,11 @@ Dimensiones de `gold_kpis_por_segmento`: `region, rango_credit_score, tipo_prest
 | `gold_transacciones_mensuales` | Mes × tipo × categoría | `monto`, `transacciones` |
 | `_features_metadata/<fecha>.json` | — | Versión del dataset, filas, tasa de impago por partición, features seleccionadas/excluidas, cuantiles de referencia, calidad |
 | `_pronostico_metadata/<fecha>.json` | — | Comparación de modelos (MAE), modelos elegidos, estabilidad |
+| `gold_simulacion_cartera` (S16) | Escenario | `perdida_esperada`, `var_95/99/99_9` (y `_pct`), `expected_shortfall_99`, `capital_economico`, `prob_superar_reservas_pct`, `prob_superar_colchon_pct`, `exposicion_total`, `prestamos`, `pd_promedio_pct`, `lgd`, `simulaciones` |
+| `gold_simulacion_cartera_distribucion` (S16) | Escenario × rango de pérdida | `desde`, `hasta`, `anos`, `pct_anos` (histograma de 40 rangos) |
+| `gold_simulacion_cliente_demo` (S16) | Escenario × mes | Percentiles de saldo `p5`, `p25`, `p50`, `p75`, `p95` y `prob_saldo_negativo_pct` |
+| `gold_simulacion_cliente_demo_resumen` (S16) | Escenario | `saldo_inicial`, `prob_quedarse_sin_ahorro_pct`, `mes_mediano_agotamiento`, `saldo_final_mediana`, `flujo_mensual_promedio` |
+| `_simulacion_metadata/<fecha>.json` (S16) | — | Configuración usada (escenarios, semilla), resumen por escenario y duración |
 
 ### 4.5 `_gold_metadata/<YYYY-MM-DD>.json`
 

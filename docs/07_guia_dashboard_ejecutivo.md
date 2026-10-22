@@ -16,6 +16,8 @@
 | **Acciones sugeridas** | ¿Qué hacemos? | Lista priorizada (Alta / Media) que se genera sola a partir de lo que está fuera de meta. |
 | **Clientes prioritarios** | ¿A quién llamamos primero? | Clientes en rojo, del más al menos riesgoso, con su probabilidad de impago y los **principales factores** que explican su riesgo. Se puede descargar la lista completa en Excel (CSV). |
 | **Cliente demo: próximos 6 meses** | ¿Hacia dónde van sus finanzas? | Línea continua = lo que pasó; punteada = lo esperado, con su rango probable. Un solo cliente de demostración. |
+| **Simulador de escenarios → Cartera** | ¿Y si hay una crisis? ¿Nos alcanza el colchón? | Tabla por escenario (base, adverso, severo): pérdida esperada, año muy malo (1 de 100), peor caso (1 de 1,000) y qué tan seguido se rebasaría el **colchón actual**. El histograma muestra los años simulados; las barras a la derecha de la línea del colchón son años en que no alcanzaría. En **Arma tu propio escenario** se mueven impagos, pérdida si no paga y contagio, y se pulsa *Simular*. |
+| **Simulador de escenarios → Cliente demo** | ¿Aguanta el cliente una inflación, una recesión o perder su empleo? | Probabilidad de quedarse sin ahorro en 12 meses por escenario y abanico del saldo (franja oscura: la mitad de los futuros; clara: 9 de cada 10). Su propio escenario se arma con cambios de ingreso/gasto, meses sin ingreso y ahorro inicial. |
 
 ## Los 4 indicadores clave
 

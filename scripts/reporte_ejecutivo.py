@@ -103,11 +103,12 @@ def _hay(valor) -> bool:
 def fmt_usd(valor) -> str:
     if not _hay(valor):
         return "N/D"
-    if abs(valor) >= 1_000_000_000:
-        return f"${valor / 1_000_000_000:,.1f} mil millones"
-    if abs(valor) >= 1_000_000:
-        return f"${valor / 1_000_000:,.1f} millones"
-    return f"${valor:,.0f}"
+    signo, valor = ("-" if valor < 0 else ""), abs(valor)  # "-$20,286", no "$-20,286"
+    if valor >= 1_000_000_000:
+        return f"{signo}${valor / 1_000_000_000:,.1f} mil millones"
+    if valor >= 1_000_000:
+        return f"{signo}${valor / 1_000_000:,.1f} millones"
+    return f"{signo}${valor:,.0f}"
 
 
 def fmt_pct(valor, decimales: int = 1) -> str:

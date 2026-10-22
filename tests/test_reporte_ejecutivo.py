@@ -140,5 +140,6 @@ def test_formatos_para_ejecutivo():
     assert rep.fmt_usd(3_246_100_000) == "$3.2 mil millones"
     assert rep.fmt_usd(1_349_900) == "$1.3 millones"
     assert rep.fmt_usd(249_798) == "$249,798"
+    assert rep.fmt_usd(-20_285.8) == "-$20,286"
     assert rep.fmt_pct(None) == "N/D"
     assert rep.fmt_int(32424.4) == "32,424"

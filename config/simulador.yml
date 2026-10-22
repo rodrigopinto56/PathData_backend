@@ -1,0 +1,80 @@
+# config/simulador.yml
+#
+# Semana 16: simulador financiero Monte Carlo.
+# Implementacion: scripts/simulador_montecarlo.py. Se ejecuta cada dia en
+# transformacion_gold_dag (tarea simular_escenarios) y de forma interactiva
+# en el dashboard ejecutivo (seccion "Simulador de escenarios").
+
+# ---------------------------------------------------------------------------
+# 1) Perdidas de la cartera de credito (modelo de un factor de Vasicek)
+# ---------------------------------------------------------------------------
+# Cada simulacion es "un ano posible": se sortea un factor economico comun
+# (que tan buena o mala es la economia) y, segun el, cada prestamo cae o no
+# en impago con su propia probabilidad (PD del modelo de la Semana 15).
+# La correlacion mide cuanto dependen los impagos de la economia comun: es
+# lo que hace que en un ano malo caigan MUCHOS a la vez.
+cartera:
+  simulaciones: 10000        # anos simulados por escenario (DAG)
+  simulaciones_interactivas: 2000   # en el dashboard (respuesta en ~1 s)
+  semilla: 42
+  # "basilea" = formula de Basilea II para credito minorista: entre 3% y 16%
+  # segun la PD de cada prestamo. Un numero fijo (p.ej. 0.15) la reemplaza.
+  correlacion: basilea
+  niveles_var: [0.95, 0.99, 0.999]
+  escenarios:
+    base:
+      nombre: "Base"
+      descripcion: "Condiciones actuales: PD del modelo y LGD de 45%"
+      multiplicador_pd: 1.0
+      lgd: 0.45
+    adverso:
+      nombre: "Adverso"
+      descripcion: "Desaceleración: impagos +50% y menor recuperación (LGD 55%)"
+      multiplicador_pd: 1.5
+      lgd: 0.55
+    severo:
+      nombre: "Severo"
+      descripcion: "Crisis: impagos ×2.5, LGD 65% y más contagio entre impagos"
+      multiplicador_pd: 2.5
+      lgd: 0.65
+      correlacion: 0.25
+
+# ---------------------------------------------------------------------------
+# 2) Finanzas del cliente demo (bootstrap de su historial mensual)
+# ---------------------------------------------------------------------------
+# Cada simulacion arma 12 meses futuros sorteando meses REALES de su
+# historial reciente (ingreso y gasto del mismo mes juntos, para conservar
+# su relacion) y aplica el escenario. Se mide si el saldo ahorrado se agota.
+cliente_demo:
+  simulaciones: 5000
+  semilla: 42
+  horizonte_meses: 12
+  meses_historia: 24
+  # Supuesto: el dataset no trae el saldo ahorrado del cliente. Se asume que
+  # arranca con N meses de su gasto promedio (fondo de emergencia tipico).
+  saldo_inicial_meses_gasto: 3
+  escenarios:
+    base:
+      nombre: "Base"
+      descripcion: "Se repite su comportamiento de los últimos 24 meses"
+      cambio_ingreso: 0.0
+      cambio_gasto: 0.0
+      meses_sin_ingreso: 0
+    inflacion:
+      nombre: "Inflación"
+      descripcion: "Sus gastos suben 10%"
+      cambio_ingreso: 0.0
+      cambio_gasto: 0.10
+      meses_sin_ingreso: 0
+    recesion:
+      nombre: "Recesión"
+      descripcion: "Sus ingresos bajan 20%"
+      cambio_ingreso: -0.20
+      cambio_gasto: 0.0
+      meses_sin_ingreso: 0
+    desempleo:
+      nombre: "Desempleo"
+      descripcion: "Pierde su ingreso los primeros 3 meses"
+      cambio_ingreso: 0.0
+      cambio_gasto: 0.0
+      meses_sin_ingreso: 3

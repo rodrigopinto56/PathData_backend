@@ -43,6 +43,7 @@ from sklearn.model_selection import StratifiedKFold
 
 from features import (
     GRADOS,
+    particion_mas_reciente,
     TARGET,
     BinningWoE,
     alinear_por_cuantiles,
@@ -567,7 +568,7 @@ def cargar_campeon_minio() -> tuple[ModeloRiesgoRegistrado | None, dict | None]:
         return None, None
 
 
-def entrenar_y_registrar(fecha: str) -> dict:
+def entrenar_y_registrar(fecha: str, fecha_max: str | None = None) -> dict:
     """Lee el dataset de la Semana 14 de gold-layer, entrena, registra la
     version y la promueve a campeon si corresponde."""
     from modelo_riesgo import SILVER_BUCKET, STORAGE_OPTIONS
@@ -577,10 +578,12 @@ def entrenar_y_registrar(fecha: str) -> dict:
     registro = _registro_minio()
     with registro.fs.open(f"{gold}/_features_metadata/{fecha.replace('/', '-')}.json", "r") as f:
         metadata_dataset = json.load(f)
-    try:
-        df_cartera = pd.read_parquet(f"s3://{SILVER_BUCKET}/personal_finance_ml/{fecha}/valid", storage_options=STORAGE_OPTIONS)
-    except FileNotFoundError:
-        df_cartera = None
+    # Cartera para medir PSI y equidad: la particion mas reciente disponible
+    particion_cartera = particion_mas_reciente(registro.fs, f"{SILVER_BUCKET}/personal_finance_ml", fecha_max or fecha)
+    df_cartera = (
+        pd.read_parquet(f"s3://{SILVER_BUCKET}/personal_finance_ml/{particion_cartera}/valid", storage_options=STORAGE_OPTIONS)
+        if particion_cartera else None
+    )
 
     campeon, _ = registro.campeon()
     resultado = entrenar_modelo(dataset, metadata_dataset, cargar_config(), cargar_contrato(), campeon, df_cartera)

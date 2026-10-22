@@ -55,8 +55,16 @@ def registrar_evento(evento: dict) -> None:
 
 
 def _particion() -> str:
+    """Fecha logica = INICIO del periodo semanal (donde se escribe el resultado)."""
     context = get_current_context()
     return context["logical_date"].in_timezone("America/Mexico_City").format("YYYY/MM/DD")
+
+
+def _tope_datos() -> str:
+    """FIN del periodo semanal: la corrida "del 11" se ejecuta el 18 y puede
+    usar cualquier particion Silver hasta ese dia (la mas reciente)."""
+    context = get_current_context()
+    return context["data_interval_end"].in_timezone("America/Mexico_City").format("YYYY/MM/DD")
 
 
 @dag(
@@ -74,11 +82,11 @@ def entrenamiento_modelo_dag():
     def construir_dataset_features() -> dict:
         particion = _particion()
         try:
-            metadata = construir_dataset_entrenamiento(particion)
+            metadata = construir_dataset_entrenamiento(particion, _tope_datos())
         except FileNotFoundError as error:
             raise AirflowSkipException(
-                f"Sin credit_risk en Silver para {particion}: corre downloadRawData.py y la malla "
-                f"Bronze/Silver de esa fecha. Detalle: {error}"
+                f"No hay ninguna particion de credit_risk en Silver hasta {particion}: corre "
+                f"downloadRawData.py y la malla Bronze/Silver. Detalle: {error}"
             )
         registrar_evento({
             "nivel": "INFO",
@@ -86,6 +94,7 @@ def entrenamiento_modelo_dag():
             "fuente": "gold_features_entrenamiento",
             "particion": particion,
             "version_dataset": metadata["version_dataset"],
+            "particion_origen": metadata["particion_origen"],
             "filas": metadata["filas"],
             "features_seleccionadas": metadata["features_seleccionadas"],
         })
@@ -94,7 +103,7 @@ def entrenamiento_modelo_dag():
     @task
     def entrenar_y_registrar_modelo(_dataset: dict) -> dict:
         particion = _particion()
-        resumen = entrenar_y_registrar(particion)
+        resumen = entrenar_y_registrar(particion, _tope_datos())
         registrar_evento({
             # Un modelo que no se promueve no es una falla de la malla, pero
             # si algo que revisar: se registra como ALERTA para que se vea.

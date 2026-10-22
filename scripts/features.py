@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -442,15 +443,46 @@ def preparar_dataset_entrenamiento(df_credit: pd.DataFrame, contrato: dict) -> d
 # ---------------------------------------------------------------------------
 # E/S con MinIO
 # ---------------------------------------------------------------------------
-def construir_dataset_entrenamiento(fecha: str) -> dict:
-    """Lee credit_risk de Silver, prepara el dataset y lo publica en Gold:
+_PATRON_PARTICION = re.compile(r"/(\d{4})/(\d{2})/(\d{2})/valid/")
+
+
+def particion_mas_reciente(fs, raiz: str, fecha_max: str) -> str | None:
+    """La particion Silver mas reciente (YYYY/MM/DD) de `raiz` que no sea
+    posterior a `fecha_max`, o None si no hay ninguna.
+
+    Por que: el entrenamiento es semanal y su fecha logica puede no tener
+    particion (p.ej. el dataset se descargo despues). Exigir la fecha exacta
+    hacia que la semana completa se saltara; el dataset etiquetado casi no
+    cambia, asi que usar la ultima version disponible es lo correcto. La
+    particion usada queda registrada en la metadata (linaje)."""
+    if not fs.exists(raiz):
+        return None
+    limite = fecha_max.replace("-", "/")
+    candidatas = set()
+    for ruta in fs.find(raiz):
+        coincidencia = _PATRON_PARTICION.search("/" + ruta.lstrip("/"))
+        if coincidencia:
+            particion = "/".join(coincidencia.groups())
+            if particion <= limite:
+                candidatas.add(particion)
+    return max(candidatas) if candidatas else None
+
+
+def construir_dataset_entrenamiento(fecha: str, fecha_max: str | None = None) -> dict:
+    """Lee credit_risk de Silver (la particion mas reciente hasta `fecha`),
+    prepara el dataset y lo publica en Gold bajo `fecha`:
     gold_features_entrenamiento, reporte_seleccion_variables y metadata."""
     import s3fs
 
     from modelo_riesgo import MINIO_ENDPOINT, MINIO_KEY, MINIO_SECRET, SILVER_BUCKET, STORAGE_OPTIONS
 
     gold = os.getenv("GOLD_BUCKET", "gold-layer")
-    df_credit = pd.read_parquet(f"s3://{SILVER_BUCKET}/credit_risk/{fecha}/valid", storage_options=STORAGE_OPTIONS)
+    fs = s3fs.S3FileSystem(key=MINIO_KEY, secret=MINIO_SECRET, client_kwargs={"endpoint_url": MINIO_ENDPOINT})
+    tope = fecha_max or fecha
+    particion = particion_mas_reciente(fs, f"{SILVER_BUCKET}/credit_risk", tope)
+    if particion is None:
+        raise FileNotFoundError(f"No hay ninguna particion de credit_risk en Silver hasta {tope}")
+    df_credit = pd.read_parquet(f"s3://{SILVER_BUCKET}/credit_risk/{particion}/valid", storage_options=STORAGE_OPTIONS)
     resultado = preparar_dataset_entrenamiento(df_credit, cargar_contrato())
     if not resultado["metadata"]["calidad"]["exito_global"]:
         fallidos = [c for c in resultado["metadata"]["calidad"]["detalle"] if not c["exito"]]
@@ -463,8 +495,8 @@ def construir_dataset_entrenamiento(fecha: str) -> dict:
         f"s3://{gold}/reporte_seleccion_variables/{fecha}/data.parquet", storage_options=STORAGE_OPTIONS, index=False
     )
     resultado["metadata"]["fecha"] = fecha
+    resultado["metadata"]["particion_origen"] = particion  # linaje: que Silver se uso
     metadata = {**resultado["metadata"], "generado_en": datetime.now(timezone.utc).isoformat()}
-    fs = s3fs.S3FileSystem(key=MINIO_KEY, secret=MINIO_SECRET, client_kwargs={"endpoint_url": MINIO_ENDPOINT})
     with fs.open(f"{gold}/_features_metadata/{fecha.replace('/', '-')}.json", "w") as f:
         json.dump(metadata, f, indent=2, default=str)
     return metadata

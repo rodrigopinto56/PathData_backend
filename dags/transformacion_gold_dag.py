@@ -13,6 +13,9 @@ Semanas 11-12: orquesta Silver -> Gold.
      como gold_kpis_financieros + gold_kpis_por_segmento.
   4b) (Semana 15) Pronostica ingreso/gasto/ahorro del cliente demo y
      calcula su estabilidad (alimenta el KPI de estabilidad).
+  4c) (Semana 16) Simulador Monte Carlo: perdidas de la cartera bajo
+     escenarios de estres (base/adverso/severo) y finanzas del cliente demo
+     (inflacion/recesion/desempleo). Ver scripts/simulador_montecarlo.py.
   5) (Semana 13) Publica el reporte ejecutivo en HTML (una pagina, en
      lenguaje de negocio) en gold-layer/reportes_ejecutivos/ y en
      data/reports/ejecutivo/.
@@ -36,10 +39,12 @@ from airflow.decorators import dag, task
 from airflow.operators.python import get_current_context
 
 sys.path.append("/opt/airflow/scripts")
+from espera_dags import esperar_dag  # dags/espera_dags.py
 from construir_gold import construir_gold_particion
 from kpis_financieros import calcular_kpis_particion
 from reporte_ejecutivo import publicar_reporte_particion
 from prediccion_financiera import pronosticar_particion
+from simulador_montecarlo import simular_particion
 
 logger = logging.getLogger("transformacion_gold_dag")
 
@@ -168,7 +173,31 @@ def transformacion_gold_dag():
         })
         return resumen
 
-    construir_gold() >> pronosticar_cliente_demo() >> calcular_kpis() >> publicar_reporte_ejecutivo()
+    @task
+    def simular_escenarios() -> dict:
+        """Semana 16. Necesita fact_posicion_financiera (construir_gold) y,
+        si existe, el pronostico del cliente demo (su serie mensual)."""
+        context = get_current_context()
+        particion = context["logical_date"].in_timezone("America/Mexico_City").format("YYYY/MM/DD")
+        resumen = simular_particion(particion)
+        registrar_evento({
+            "nivel": "INFO",
+            "task": "simular_escenarios",
+            "fuente": "gold_simulacion_cartera",
+            "particion": particion,
+            **resumen,
+        })
+        return resumen
+
+    # Robustez: no arrancar hasta que Silver de la misma fecha termine bien
+    (
+        esperar_dag("esperar_silver", "transformacion_silver_dag")
+        >> construir_gold()
+        >> pronosticar_cliente_demo()
+        >> simular_escenarios()
+        >> calcular_kpis()
+        >> publicar_reporte_ejecutivo()
+    )
 
 
 transformacion_gold_dag()

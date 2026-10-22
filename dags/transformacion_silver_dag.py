@@ -28,6 +28,7 @@ from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
 sys.path.append("/opt/airflow/scripts")
+from espera_dags import esperar_dag  # dags/espera_dags.py
 from validar_calidad_silver import validar_particion
 
 
@@ -195,6 +196,9 @@ def transformacion_silver_dag():
             replace=True,
         )
 
+    # Robustez: no arrancar hasta que Bronze de la misma fecha termine bien
+    esperar_bronze = esperar_dag("esperar_bronze", "ingesta_bronze_dag")
+
     for fuente in FUENTES:
         ruta_bronze_local = descargar_particion_bronze(fuente)
         salida_silver = f"{STAGING_DIR}/{fuente}/silver_output"
@@ -214,7 +218,7 @@ def transformacion_silver_dag():
         resultado_calidad = validar_calidad(fuente)
         congelar_silver_v1(fuente, resultado_calidad)  # <-- esta línea faltaba
 
-        ruta_bronze_local >> limpiar_y_normalizar >> ruta_subida >> resultado_calidad
+        esperar_bronze >> ruta_bronze_local >> limpiar_y_normalizar >> ruta_subida >> resultado_calidad
 
 
 transformacion_silver_dag()
