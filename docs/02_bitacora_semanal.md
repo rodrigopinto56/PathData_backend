@@ -274,3 +274,11 @@ archivos, decisiones técnicas y evidencia.
 - **Sin dependencias nuevas:** scikit-learn ya estaba; las series de tiempo se implementaron con numpy.
 
 **Evidencia:** prueba de punta a punta con S3 simulado y con el CSV real de transacciones: Gold con respaldo → dataset → entrenamiento → re-entrenamiento con campeón/retador → Gold con campeón → pronóstico → 37 KPIs → reporte. El dataset de riesgo se probó con datos sintéticos del mismo esquema; sus métricas reales salen al correr el DAG con el dataset descargado.
+
+### Ajustes de robustez (post Semana 15)
+
+Aparecieron al correr la malla con datos reales: el entrenamiento semanal salía *skipped* y los DAGs diarios podían arrancar antes de tener sus datos.
+
+- **Entrenamiento con la partición más reciente** (`features.particion_mas_reciente`): la corrida semanal ya no exige que exista la partición de su fecha lógica exacta. Usa la más reciente de `credit_risk` (y de la cartera) hasta el **fin** de su periodo (`data_interval_end`) y lo registra en `particion_origen`. Nunca usa datos posteriores a ese día.
+- **Sensores entre DAGs** (`dags/espera_dags.py`): Silver espera a que Bronze termine con éxito el mismo día, y Gold espera a Silver. Aceptan corridas programadas, backfills y disparos manuales a cualquier hora. Fallan de inmediato si el DAG anterior falló, y se pueden saltar con `{"sin_esperar": true}`.
+- **Validación:** los 4 DAGs cargan sin errores en Airflow 2.9.3. El sensor se probó contra la base de Airflow en 9 casos: sin corrida, corriendo, fallida, exitosa a las 23:59, otro día, y frontera de zona horaria. La prueba `test_particion_mas_reciente` cubre la búsqueda de la partición.

@@ -36,6 +36,7 @@ from airflow.decorators import dag, task
 from airflow.operators.python import get_current_context
 
 sys.path.append("/opt/airflow/scripts")
+from espera_dags import esperar_dag  # dags/espera_dags.py
 from construir_gold import construir_gold_particion
 from kpis_financieros import calcular_kpis_particion
 from reporte_ejecutivo import publicar_reporte_particion
@@ -168,7 +169,14 @@ def transformacion_gold_dag():
         })
         return resumen
 
-    construir_gold() >> pronosticar_cliente_demo() >> calcular_kpis() >> publicar_reporte_ejecutivo()
+    # Robustez: no arrancar hasta que Silver de la misma fecha termine bien
+    (
+        esperar_dag("esperar_silver", "transformacion_silver_dag")
+        >> construir_gold()
+        >> pronosticar_cliente_demo()
+        >> calcular_kpis()
+        >> publicar_reporte_ejecutivo()
+    )
 
 
 transformacion_gold_dag()

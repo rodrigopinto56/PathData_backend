@@ -212,3 +212,22 @@ def test_config_del_modelo_es_coherente(config):
     assert config["seleccion_campeon"]["ventaja_minima_auc_retador"] > 0
     with open(os.path.join(os.path.dirname(__file__), "..", "config", "features.yml")) as f:
         assert yaml.safe_load(f)["particion"]["semilla"] == 42
+
+
+# ---------------------------------------------------------------------------
+# Robustez: el entrenamiento usa la particion mas reciente disponible
+# ---------------------------------------------------------------------------
+def test_particion_mas_reciente(tmp_path):
+    fs = fsspec.filesystem("file")
+    raiz = tmp_path / "silver-layer" / "credit_risk"
+    for fecha in ["2026/10/14", "2026/10/16", "2026/10/20"]:
+        carpeta = raiz / fecha / "valid"
+        carpeta.mkdir(parents=True)
+        (carpeta / "part-0.parquet").write_text("x")
+    (raiz / "2026/10/18/quarantine").mkdir(parents=True)  # sin valid/: no cuenta
+    (raiz / "2026/10/18/quarantine/part-0.parquet").write_text("x")
+
+    assert F.particion_mas_reciente(fs, str(raiz), "2026/10/18") == "2026/10/16"
+    assert F.particion_mas_reciente(fs, str(raiz), "2026/10/20") == "2026/10/20"
+    assert F.particion_mas_reciente(fs, str(raiz), "2026/10/01") is None
+    assert F.particion_mas_reciente(fs, str(tmp_path / "no_existe"), "2026/10/20") is None

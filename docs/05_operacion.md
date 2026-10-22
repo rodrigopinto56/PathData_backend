@@ -50,6 +50,16 @@ Estas piezas **no están versionadas** y se crean a mano:
 
 Orden: **Bronze → Silver → Gold**. Cada DAG procesa la partición de su fecha lógica.
 
+**Los DAGs se esperan entre sí** (`dags/espera_dags.py`): la primera tarea de Silver (`esperar_bronze`) y de Gold
+(`esperar_silver`) es un sensor que no deja avanzar hasta que el DAG anterior tenga una corrida **exitosa el mismo
+día** (hora de México): programada, backfill o "Trigger DAG" manual, a cualquier hora. Mientras espera aparece en
+color *up_for_reschedule* (turquesa) y no ocupa un worker; revisa cada 2 minutos hasta 6 horas. Si **todas** las
+corridas del DAG anterior ese día fallaron, el sensor falla de inmediato con el mensaje de qué corregir.
+Por eso basta con disparar los tres DAGs (en cualquier orden): cada uno arranca cuando le toca.
+
+Para re-procesar **solo** Gold (o Silver) con datos que ya existen, sin esperar al DAG anterior, dispáralo con
+la configuración `{"sin_esperar": true}` (en la UI: *Trigger DAG w/ config*; en terminal: `-c '{"sin_esperar": true}'`).
+
 ### 3.1 Backfill de una fecha específica
 
 Los DAGs son `@daily` en zona `America/Mexico_City` (UTC−6): cada corrida inicia a las **00:00 de México = 06:00 UTC**.
@@ -70,7 +80,10 @@ docker compose exec airflow-scheduler airflow dags test transformacion_gold_dag 
 
 ### 3.1b Entrenar el modelo (Semanas 14–15)
 
-Requiere `credit_risk` en Silver para la fecha. Orden: Bronze → Silver → **entrenamiento** → Gold.
+Usa la partición **más reciente** de `credit_risk` (y de la cartera) en Silver que exista hasta el **fin** de su
+periodo semanal (`data_interval_end`): la corrida "del 11" se ejecuta el 18 y puede usar los datos del 15. El
+metadata guarda cuál usó (`particion_origen`). Solo se salta (*skipped*) si no hay **ninguna** partición de
+`credit_risk` hasta esa fecha. Orden: Bronze → Silver → **entrenamiento** → Gold.
 
 ```powershell
 $F = "2026-10-19T00:00:00-06:00"
@@ -79,6 +92,15 @@ docker compose exec airflow-scheduler airflow dags test transformacion_gold_dag 
 ```
 
 La primera vez, el modelo se registra y se promueve a campeón. Después, cada entrenamiento compara contra el campeón vigente.
+
+Gold sin esperar a Silver (los datos de esa fecha ya existen):
+
+```powershell
+docker compose exec airflow-scheduler airflow dags test transformacion_gold_dag $F -c '{\"sin_esperar\": true}'
+```
+
+(Esa forma de escapar las comillas es la de Windows PowerShell 5. En PowerShell 7 usa `-c '{"sin_esperar": true}'`.
+Si dudas, usa *Trigger DAG w/ config* en la UI.)
 
 ### 3.2 Ejecutar Gold y KPIs a mano (depuración)
 
@@ -135,7 +157,9 @@ Usan datos sintéticos con el esquema real (`tests/datos_sinteticos.py`) y no ne
 | `extraer_y_validar` falla sin reintentar | Faltan columnas esperadas en el CSV | Volver a descargar con `downloadRawData.py` y revisar el `manifest.json` |
 | `descargar_particion_bronze` falla | No existe la partición Bronze de esa fecha | Correr primero `ingesta_bronze_dag` para esa fecha |
 | KPI en **`SIN_DATOS`** / "N/D" | No hay columnas para calcularlo (p. ej. pago mensual) o falta historial | Esperado; revisar `fuente_pago_mensual` en `_gold_metadata` |
-| `entrenamiento_modelo_dag` en *skipped* | No hay `credit_risk` en Silver para esa fecha | Correr `downloadRawData.py` y la malla Bronze/Silver de la fecha |
+| `entrenamiento_modelo_dag` en *skipped* | No hay **ninguna** partición de `credit_risk` en Silver hasta el fin del periodo semanal | Correr `downloadRawData.py` y la malla Bronze/Silver; luego disparar el entrenamiento a mano |
+| `esperar_bronze` / `esperar_silver` en turquesa (*up_for_reschedule*) mucho tiempo | El DAG anterior no ha corrido (o sigue corriendo) ese día | Normal mientras corre. Si no se disparó, dispararlo; para re-procesar sin esperar, usar `{"sin_esperar": true}` |
+| `esperar_*` falla: *"... fallo el AAAA-MM-DD"* | Todas las corridas del DAG anterior ese día fallaron | Corregir y re-correr el DAG anterior; luego *Clear* en la tarea `esperar_*` |
 | Evento `ALERTA` en `entrenar_y_registrar` | El modelo nuevo no se promovió (peor que el campeón o falló una prueba de negocio) | Ver `razon_promocion` en la Vista 5 / `model_card.json`; el campeón anterior sigue vigente |
 | Vista 3 dice "modelo inicial (Semana 11)" | Todavía no hay campeón registrado | Correr `entrenamiento_modelo_dag` y después el DAG de Gold |
 | Dashboard ejecutivo: *"se calcularon con una versión anterior del proceso"* | La partición no tiene los KPIs de negocio | Re-ejecutar `transformacion_gold_dag` para esa fecha |
