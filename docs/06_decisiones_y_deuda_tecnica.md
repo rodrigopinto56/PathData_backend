@@ -36,6 +36,8 @@
 | D30 | 15 | Pronóstico con modelos simples + backtesting vs. baseline | Modelos complejos (ARIMA, redes) | 60 puntos de historia; un modelo que no le gana al baseline no se usa |
 | D31 | 16 | Monte Carlo con modelo de un factor de Vasicek (Basilea) | Impagos independientes; cópulas más complejas | Es el estándar regulatorio; sin correlación se subestima la cola. Se valida contra la fórmula cerrada |
 | D32 | 16 | Bootstrap de meses reales para el cliente demo | Simular ingreso y gasto con distribuciones normales | No supone una forma de la distribución y conserva la relación ingreso–gasto del mismo mes |
+| D34 | 17 | IA local con Ollama + Llama 3.2 (3B) | APIs de pago (OpenAI, Claude) | Gratis, sin enviar datos de clientes a internet; corre en CPU |
+| D35 | 17 | Enrutador por reglas + LLM que solo redacta, con verificador de cifras | Agente con *tool calling* | Un modelo de 3–8B elige mal las herramientas; los datos y cifras deben ser exactos y probables |
 | D33 | 16 | Sensor "mismo día" propio en vez de `ExternalTaskSensor` | `ExternalTaskSensor` con fecha lógica exacta | Los disparos manuales tienen fecha lógica a la hora del clic y el sensor estándar esperaba una corrida inexistente |
 
 ## 2. Limitaciones conocidas
@@ -51,6 +53,7 @@
 | **Pesos del índice consolidado por criterio experto** | No calibrados contra incumplimientos reales | Ajustables en `PESOS_INDICE_RIESGO`; calibrar cuando existan datos. |
 | **LGD fija de 45%** | La pérdida esperada es una aproximación regulatoria | Reemplazar por una LGD observada. |
 | **Escenarios de estrés por supuesto de negocio** (×1.5, ×2.5) | No son un pronóstico macroeconómico | Configurables en `config/simulador.yml`; ligarlos a variables macro (desempleo, tasas) en una versión futura. |
+| **El asistente entiende palabras clave, no cualquier pregunta** | Preguntas fuera de su vocabulario reciben el resumen general | Ampliar el léxico; con un modelo más grande, *tool calling* |
 | **Ahorro inicial del cliente demo supuesto** (3 meses de gasto) | La probabilidad de quedarse sin ahorro depende de ese supuesto | Ajustable en el dashboard; definitivo: saldo real de la cuenta. |
 
 ## 3. Deuda técnica

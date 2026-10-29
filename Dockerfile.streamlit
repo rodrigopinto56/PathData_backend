@@ -8,7 +8,9 @@ RUN pip install --no-cache-dir \
     s3fs \
     plotly \
     pyyaml \
-    scipy
+    scipy \
+    langchain-core==1.7.1 \
+    langchain-ollama==1.1.0
 
 COPY dashboard/ /app/
 # Semana 13: logica de negocio compartida con el reporte que publica el DAG
@@ -17,6 +19,8 @@ COPY scripts/reporte_ejecutivo.py /app/
 # configuracion que la tarea simular_escenarios del DAG)
 COPY scripts/simulador_montecarlo.py /app/
 COPY config/simulador.yml /app/
+# Semana 17: asistente financiero (IA local con Ollama)
+COPY scripts/asistente_financiero.py /app/
 
 EXPOSE 8501
 
