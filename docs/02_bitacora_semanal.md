@@ -311,3 +311,26 @@ Aparecieron al correr la malla con datos reales: el entrenamiento semanal salía
 - La pérdida esperada simulada (5.12% de la exposición) cuadra con el KPI calculado por fórmula (5.10%).
 - Con 17,840 préstamos (tamaño real) la simulación tarda unos 13 s.
 - Con las transacciones reales, el cliente demo gasta más de lo que gana (unos −$6,800 al mes). Aun en el escenario base agota su ahorro supuesto en 79% de los futuros, lo que es coherente con el pronóstico S15.
+
+## Semana 17 — Asistente IA (consultas en lenguaje natural)
+
+**Objetivo del plan:** prototipo de asistente financiero con Ollama, Llama 3 y LangChain.
+
+**Qué se hizo**
+- `scripts/asistente_financiero.py`: responde preguntas como "¿qué región tiene más riesgo?", "¿por qué el cliente U00041 es riesgoso?" o "¿qué pasaría si hay una crisis?" con los datos de Gold.
+  - **Enrutador por reglas:** decide qué datos hacen falta.
+  - **Consultas a Gold:** reutilizan la lógica del tablero.
+  - **Llama 3.2 vía Ollama y LangChain:** solo redacta la respuesta.
+  - **Verificador:** marca cualquier cifra que no esté en los datos.
+- **Modo básico:** si la IA no está disponible, el asistente muestra los datos sin redactar y el tablero no se rompe.
+- `docker-compose.yml`: servicios `ollama` (servidor local) y `ollama-init` (descarga el modelo una vez).
+- **Dashboard ejecutivo:** sección *"Pregúntale al asistente"* con preguntas de ejemplo, chat, los datos consultados y el aviso de cifras no verificadas.
+- **Pruebas:** 24 nuevas (94 en total), con un modelo falso de LangChain y un servidor que imita la API de Ollama.
+- **Documentación:** [10 — Asistente financiero con IA](10_asistente_ia.md).
+
+**Decisiones técnicas**
+- **IA local y gratuita:** Ollama no cobra por uso y los datos de clientes no salen de nuestros servidores.
+- **La IA redacta, el código busca los datos:** un modelo pequeño elige mal herramientas y puede inventar números. Así, lo que debe ser exacto lo hace código probado.
+- **Llama 3.2 3B por defecto:** corre en CPU con ~4 GB de RAM. Con más memoria se cambia a `llama3.1:8b` sin tocar código.
+
+**Evidencia:** prueba de punta a punta con datos sintéticos (pipeline → Gold → tablero → chat) en modo básico y contra un servidor que imita la API de Ollama. La redacción con el modelo real se valida en la máquina del equipo, porque en el entorno de desarrollo la descarga de modelos estaba bloqueada.

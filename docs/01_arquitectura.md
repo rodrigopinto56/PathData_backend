@@ -93,7 +93,8 @@ Desde la Semana 15 también existen en `gold-layer`: `gold_features_entrenamient
 `reporte_seleccion_variables`, `gold_pronostico_cliente_demo`, `gold_transacciones_mensuales`,
 `_features_metadata/` y `_pronostico_metadata/`. Desde la Semana 16: `gold_simulacion_cartera`,
 `gold_simulacion_cartera_distribucion`, `gold_simulacion_cliente_demo`, `gold_simulacion_cliente_demo_resumen`
-y `_simulacion_metadata/`. Y un bucket nuevo:
+y `_simulacion_metadata/`. La Semana 17 no agrega tablas: el asistente (servicio `ollama` + dashboard ejecutivo)
+solo **lee** Gold (ver [10](10_asistente_ia.md)). Y un bucket nuevo:
 
 ```
 ml-models/riesgo_credito/

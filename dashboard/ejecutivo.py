@@ -10,6 +10,7 @@ en lenguaje de negocio cuatro preguntas, en este orden:
   3) ¿Cuanto dinero esta en juego y donde esta el riesgo?
   4) ¿Que hacemos?                   -> acciones sugeridas + clientes prioritarios
   5) ¿Y si las cosas se ponen dificiles? -> simulador de escenarios (Semana 16)
+  6) Preguntale al asistente             -> chat con IA local (Semana 17)
 
 Es una app aparte del dashboard tecnico (app.py): mismo origen de datos
 (gold-layer), distinta audiencia. Se sirve en el puerto 8502 con tema
@@ -30,10 +31,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 try:
+    import asistente_financiero as asis
     import reporte_ejecutivo as rep
     import simulador_montecarlo as sim
 except ModuleNotFoundError:  # ejecucion local fuera del contenedor
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "scripts"))
+    import asistente_financiero as asis
     import reporte_ejecutivo as rep
     import simulador_montecarlo as sim
 
@@ -673,6 +676,71 @@ else:
             )
 
 # ---------------------------------------------------------------------------
+# 6) Asistente financiero (Semana 17, IA local con Ollama)
+# ---------------------------------------------------------------------------
+@st.cache_data(ttl=30, show_spinner=False)
+def _estado_ollama() -> tuple[bool, str]:
+    return asis.ollama_disponible()
+
+
+@st.cache_resource
+def _llm():
+    return asis.crear_llm()
+
+
+def _markdown_seguro(texto: str) -> str:
+    """Streamlit interpreta $...$ como formula: se escapa el signo de pesos."""
+    return texto.replace("$", "\\$")
+
+
+st.divider()
+st.subheader("Pregúntale al asistente")
+ia_disponible, detalle_ia = _estado_ollama()
+st.caption(
+    "Asistente con inteligencia artificial que corre en nuestros propios servidores (Ollama · "
+    f"{asis.OLLAMA_MODEL}); ningún dato sale a internet. Responde solo con la información de este tablero "
+    f"y de la fecha seleccionada ({rep.fecha_legible(fecha)})."
+)
+if not ia_disponible:
+    st.info(f"{detalle_ia} Mientras tanto, el asistente responde en **modo básico**: muestra los datos "
+            "que encontró, sin redactarlos con IA.")
+
+datos_asistente = asis.DatosAsistente(
+    fecha=fecha, kpis=kpis_fecha, segmentos=seg_fecha, clientes=clientes,
+    simulacion_cartera=simulacion_cartera, simulacion_cliente=simulacion_cliente, pronostico=pronostico,
+)
+historial = st.session_state.setdefault("chat_asistente", {}).setdefault(fecha, [])
+
+st.markdown('<p class="muted">Prueba con:</p>', unsafe_allow_html=True)
+pregunta = None
+columnas_ejemplo = st.columns(3)
+for i, ejemplo in enumerate(asis.PREGUNTAS_EJEMPLO):
+    if columnas_ejemplo[i % 3].button(ejemplo, key=f"ejemplo_{i}", use_container_width=True):
+        pregunta = ejemplo
+pregunta = st.chat_input("Escribe tu pregunta sobre la cartera (por ejemplo: ¿por qué el cliente U00041 es riesgoso?)") or pregunta
+
+if pregunta:
+    with st.spinner("Consultando los datos y redactando la respuesta…"):
+        historial.append({"pregunta": pregunta, **asis.responder(pregunta, datos_asistente, _llm() if ia_disponible else None)})
+
+for turno in historial[-6:]:
+    with st.chat_message("user"):
+        st.markdown(_markdown_seguro(turno["pregunta"]))
+    with st.chat_message("assistant"):
+        st.markdown(_markdown_seguro(turno["respuesta"]))
+        modo = f"IA ({asis.OLLAMA_MODEL})" if turno["modo"] == "ia" else "básico (sin IA)"
+        st.caption(f"Datos consultados: {', '.join(turno['consultas'])} · Modo: {modo}")
+        if turno["cifras_no_verificadas"]:
+            st.warning("Revisa estas cifras: no aparecen en los datos consultados → "
+                       + ", ".join(turno["cifras_no_verificadas"]))
+        if turno["modo"] == "ia":
+            with st.expander("Ver los datos que usó el asistente"):
+                st.text(turno["contexto"])
+if historial and st.button("Borrar conversación"):
+    historial.clear()
+    st.rerun()
+
+# ---------------------------------------------------------------------------
 # Compartir + glosario
 # ---------------------------------------------------------------------------
 st.divider()
@@ -697,6 +765,7 @@ with st.expander("¿Cómo leer este tablero?"):
 - **Simulación Monte Carlo:** se simulan miles de futuros posibles con las probabilidades de cada cliente y se cuenta qué tan seguido pasa cada resultado. El nombre viene del casino de Monte Carlo: la técnica usa el azar, como una ruleta, pero para medir riesgos.
 - **Colchón actual:** reservas más capital que el banco necesita hoy para aguantar un año de cada mil (el peor caso 1 de 1,000 del escenario base). Es el criterio que usa la regulación bancaria (Basilea).
 - **Peor caso (1 de 1,000):** pérdida que solo se supera en uno de cada mil años simulados. **Año muy malo (1 de 100):** igual, pero uno de cada cien.
+- **Asistente:** usa un modelo de lenguaje (Llama 3) instalado en nuestros servidores con Ollama. Antes de responder consulta los datos del tablero y solo redacta con ellos; si una cifra de su respuesta no aparece en los datos, lo marca para revisarla.
 - **Fuente:** datos de demostración (dataset público sintético), actualizados cada día por el proceso automático de datos.
         """
     )

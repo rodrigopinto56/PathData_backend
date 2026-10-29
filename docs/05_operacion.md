@@ -125,11 +125,11 @@ python scripts/bronzeHealth.py
 ## 4. Pruebas
 
 ```powershell
-pip install pandas pyarrow scikit-learn scipy pyyaml pytest
+pip install pandas pyarrow scikit-learn scipy pyyaml pytest langchain-ollama
 pytest tests/
 ```
 
-70 pruebas en 5 archivos (`test_gold_kpis.py`, `test_reporte_ejecutivo.py`, `test_modelo_credito.py`, `test_prediccion_financiera.py`, `test_simulador_montecarlo.py`).
+94 pruebas en 6 archivos (`test_gold_kpis.py`, `test_reporte_ejecutivo.py`, `test_modelo_credito.py`, `test_prediccion_financiera.py`, `test_simulador_montecarlo.py`, `test_asistente_financiero.py`). No necesitan Ollama.
 Usan datos sintéticos con el esquema real (`tests/datos_sinteticos.py`) y no necesitan Docker ni descargas. Cubren:
 - **Modelo estrella**: tablas completas, integridad referencial, detección de FK huérfanas, grano, miembro "Sin prestamo", normalización y pérdida esperada.
 - **KPIs**: catálogo completo, cuadre de la exposición con la tabla de hechos, semáforo de umbrales y cuadre de segmentos contra el total.
@@ -144,7 +144,7 @@ Usan datos sintéticos con el esquema real (`tests/datos_sinteticos.py`) y no ne
 | Qué cambió | Qué hacer |
 |---|---|
 | `dags/`, `scripts/`, `config/`, `src/spark/` | Nada: están montados como volumen. `docker compose restart airflow-scheduler airflow-webserver` si un DAG no refleja el cambio. |
-| `dashboard/`, `scripts/reporte_ejecutivo.py`, `scripts/simulador_montecarlo.py`, `config/simulador.yml` o `Dockerfile.streamlit` | Reconstruir: `docker compose build streamlit streamlit-ejecutivo` y `docker compose up -d streamlit streamlit-ejecutivo` (el código se **copia** a la imagen). |
+| `dashboard/`, `scripts/reporte_ejecutivo.py`, `scripts/asistente_financiero.py`, `scripts/simulador_montecarlo.py`, `config/simulador.yml` o `Dockerfile.streamlit` | Reconstruir: `docker compose build streamlit streamlit-ejecutivo` y `docker compose up -d streamlit streamlit-ejecutivo` (el código se **copia** a la imagen). |
 | `Dockerfile` (dependencias) | `docker compose build` y `docker compose up -d` |
 
 ## 6. Troubleshooting (problemas reales encontrados)
@@ -164,4 +164,7 @@ Usan datos sintéticos con el esquema real (`tests/datos_sinteticos.py`) y no ne
 | Evento `ALERTA` en `entrenar_y_registrar` | El modelo nuevo no se promovió (peor que el campeón o falló una prueba de negocio) | Ver `razon_promocion` en la Vista 5 / `model_card.json`; el campeón anterior sigue vigente |
 | Vista 3 dice "modelo inicial (Semana 11)" | Todavía no hay campeón registrado | Correr `entrenamiento_modelo_dag` y después el DAG de Gold |
 | Dashboard ejecutivo: *"se calcularon con una versión anterior del proceso"* | La partición no tiene los KPIs de negocio | Re-ejecutar `transformacion_gold_dag` para esa fecha |
+| Asistente: *"No se pudo conectar con Ollama"* | El servicio `ollama` no está levantado | `docker compose up -d ollama` y recargar el tablero (responde en modo básico mientras tanto) |
+| Asistente: *"el modelo … no está descargado"* | `ollama-init` no terminó o falló la descarga | `docker compose logs ollama-init`; reintentar con `docker compose exec ollama ollama pull llama3.2:3b` |
+| Asistente muy lento o el contenedor `ollama` se reinicia | Poca memoria para el modelo | Subir la memoria de Docker Desktop (≥ 6 GB) o usar un modelo más chico (`llama3.2:1b`) |
 | Vista 1 muestra valores de `nivel` "OTRO" | Eventos con un nivel distinto de INFO/ALERTA (p. ej. `ERROR`) | El dashboard los agrupa y los avisa; revisar `pipeline_log.jsonl` |
