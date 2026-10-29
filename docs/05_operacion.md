@@ -129,7 +129,7 @@ pip install pandas pyarrow scikit-learn scipy pyyaml pytest langchain-ollama
 pytest tests/
 ```
 
-94 pruebas en 6 archivos (`test_gold_kpis.py`, `test_reporte_ejecutivo.py`, `test_modelo_credito.py`, `test_prediccion_financiera.py`, `test_simulador_montecarlo.py`, `test_asistente_financiero.py`). No necesitan Ollama.
+101 pruebas en 6 archivos (`test_gold_kpis.py`, `test_reporte_ejecutivo.py`, `test_modelo_credito.py`, `test_prediccion_financiera.py`, `test_simulador_montecarlo.py`, `test_asistente_financiero.py`). No necesitan Ollama.
 Usan datos sintéticos con el esquema real (`tests/datos_sinteticos.py`) y no necesitan Docker ni descargas. Cubren:
 - **Modelo estrella**: tablas completas, integridad referencial, detección de FK huérfanas, grano, miembro "Sin prestamo", normalización y pérdida esperada.
 - **KPIs**: catálogo completo, cuadre de la exposición con la tabla de hechos, semáforo de umbrales y cuadre de segmentos contra el total.

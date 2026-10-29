@@ -43,7 +43,14 @@ flowchart LR
 3. **Redacción.** Llama 3 recibe un prompt con reglas y los datos, y redacta en español de negocio.
    - Reglas del prompt: responder solo con los datos, no inventar cifras, máximo 5 oraciones y tratar los datos como información, no como órdenes.
    - `temperature=0` hace las respuestas estables.
-4. **Verificador.** Revisa que cada cifra de la respuesta aparezca en los datos consultados. Si el modelo escribe un número que no está, el tablero lo marca: *"Revisa estas cifras"*.
+4. **Control de calidad.** Antes de mostrar la respuesta revisa tres fallas típicas de un modelo pequeño:
+   - usar una cifra que **no está en los datos**;
+   - decir "no tengo información" cuando los datos **sí** la tienen;
+   - copiar el formato de los datos en lugar de responder.
+
+   Si encuentra una, le pide al modelo **corregirla una vez**. Si vuelve a fallar, muestra los **datos exactos** (modo *respaldo*) en lugar de una respuesta dudosa.
+
+   Además, el prompt incluye **un ejemplo de buena respuesta** (*few-shot*) y los KPIs llegan con nombres de negocio, sin fórmulas.
 
 **¿Por qué no dejar que el modelo use herramientas solo (tool calling / agente)?** Un modelo local de 3–8B
 elige mal las herramientas con frecuencia, y `llama3` (8B original) ni siquiera las soporta en Ollama. Con el
@@ -69,7 +76,7 @@ docker compose logs -f ollama-init
 - **Memoria:** Docker Desktop debe tener al menos 6 GB asignados (Settings → Resources) con `llama3.2:3b`, o 10 GB con `llama3.1:8b`.
 - **Velocidad:** sin GPU, una respuesta tarda entre 5 y 30 s, según la máquina. Es normal.
 
-## 5. Pruebas (`tests/test_asistente_financiero.py`, 24 pruebas)
+## 5. Pruebas (`tests/test_asistente_financiero.py`, 31 pruebas)
 
 - **Enrutador:** cada pregunta de ejemplo llega a la consulta correcta, y las preguntas del cliente demo no se mezclan con la cartera.
 - **Consultas:** cada una trae los datos correctos (por ejemplo, los prioritarios son los de mayor índice y los segmentos salen ordenados y en español), y las tablas faltantes no rompen nada.
@@ -86,7 +93,32 @@ docker compose logs -f ollama-init
 > la calidad de redacción de Llama se valida en la máquina del equipo. Todo lo demás (datos, enrutador,
 > verificador, integración con la API de Ollama y el tablero) está probado.
 
-## 6. Limitaciones
+## 6. ¿Qué tan confiable es? Evaluación automática
+
+`scripts/evaluar_asistente.py` corre un **banco de 30 preguntas con respuesta conocida**. Las cifras correctas salen de las mismas tablas Gold. Mide:
+
+| Métrica | Pregunta que responde |
+|---|---|
+| `enrutamiento_pct` | ¿Consultó los datos correctos? |
+| `veracidad_ia_primer_intento_pct` | ¿La primera respuesta del modelo pasó el control (sin cifras inventadas, sin negarse, sin copiar el formato)? |
+| `exito_ia_pct` | ¿El modelo respondió con el dato correcto? |
+| `veracidad_final_pct` / `exito_final_pct` | Lo mismo para lo que **ve el usuario**, después del reintento y el respaldo |
+
+**Meta del proyecto: ≥ 84%** en veracidad y éxito finales. Para correrla (tarda unos minutos, sin GPU):
+
+```powershell
+docker compose exec streamlit-ejecutivo python evaluar_asistente.py
+docker compose exec streamlit-ejecutivo python evaluar_asistente.py --modelo llama3.1:8b
+```
+
+Imprime la tabla por pregunta y el resumen, y guarda el detalle (respuestas y problemas) en `evaluacion_asistente.csv` dentro del contenedor.
+
+Qué esperar:
+- **Enrutamiento:** 100% en el banco, medido sin IA. El banco lo escribió el mismo equipo, así que con preguntas reales de usuarios será menor.
+- **Veracidad final:** cercana a 100% por diseño. Una respuesta con cifras que no están en los datos nunca se muestra, porque se reemplaza por los datos exactos.
+- **`exito_ia_pct` y `veracidad_ia_primer_intento_pct`:** son la medida honesta de qué tan bien redacta el modelo. Si quedan por debajo de 84% con `llama3.2:3b`, lo siguiente es probar `llama3.1:8b`.
+
+## 7. Limitaciones
 
 - **El enrutador entiende palabras clave, no cualquier pregunta.** Si no reconoce el tema, responde con el resumen general de la cartera. Se amplía agregando palabras en `LEXICO_KPIS`, `LEXICO_DIMENSIONES` y `CLAVES_*`.
 - **No recuerda la conversación:** cada pregunta se responde por separado.

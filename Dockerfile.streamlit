@@ -21,6 +21,7 @@ COPY scripts/simulador_montecarlo.py /app/
 COPY config/simulador.yml /app/
 # Semana 17: asistente financiero (IA local con Ollama)
 COPY scripts/asistente_financiero.py /app/
+COPY scripts/evaluar_asistente.py /app/
 
 EXPOSE 8501
 

@@ -65,7 +65,8 @@ PathData_backend/
 │   ├── modelo_credito.py             # S15: modelo, calibración, registro
 │   ├── prediccion_financiera.py      # S15: pronóstico del cliente demo
 │   ├── simulador_montecarlo.py       # S16: simulador Monte Carlo
-│   └── asistente_financiero.py       # S17: asistente con IA (Ollama)
+│   ├── asistente_financiero.py       # S17: asistente con IA (Ollama)
+│   └── evaluar_asistente.py          # S17: evaluación (veracidad y éxito)
 ├── config/                       # Contratos declarativos
 │   ├── silver_schema.yml             # S9: reglas de Silver
 │   ├── gold_schema.yml               # S11–S12: modelo, métricas y KPIs
