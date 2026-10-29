@@ -53,6 +53,14 @@ def _fmt(datos, kpi) -> list[str]:
     return [] if fila is None else [asis._fmt_kpi(fila["valor"], fila.get("unidad"))]
 
 
+def _estado(datos, kpi) -> list[str]:
+    """Palabras que expresan correctamente si el KPI cumple su meta."""
+    fila = _kpi(datos, kpi)
+    if fila is None:
+        return []
+    return {"OK": ["Saludable", "sí cumple"], "ALERTA": ["no cumple", "Requiere atención"]}.get(fila["estado"], [])
+
+
 def _top_segmento(datos, dimension) -> list[str]:
     tabla = rep.riesgo_por_segmento(datos.segmentos, dimension)
     return [] if tabla.empty else [str(tabla.iloc[0]["Segmento"])]
@@ -104,7 +112,8 @@ def banco_preguntas(datos: asis.DatosAsistente) -> list[Caso]:
         Caso("¿Qué porcentaje de lo prestado esperamos perder?", "indicadores", lambda d: _fmt(d, "perdida_esperada_pct_exposicion")),
         Caso("¿Cuánto dinero tenemos prestado?", "indicadores", lambda d: _fmt(d, "exposicion_total_usd")),
         Caso("¿Cuál es la capacidad de ahorro de los clientes?", "indicadores", lambda d: _fmt(d, "capacidad_ahorro_mediana_pct")),
-        Caso("¿Se cumple la meta de ahorro?", "indicadores", lambda d: _fmt(d, "capacidad_ahorro_mediana_pct")),
+        # Responder "no cumple / requiere atencion" sin la cifra tambien es correcto
+        Caso("¿Se cumple la meta de ahorro?", "indicadores", lambda d: _fmt(d, "capacidad_ahorro_mediana_pct") + _estado(d, "capacidad_ahorro_mediana_pct")),
         Caso("¿Cuál es el endeudamiento mensual?", "indicadores", lambda d: _fmt(d, "endeudamiento_mensual_mediana_pct")),
         Caso("¿Qué tan endeudados están los clientes?", "indicadores", lambda d: _fmt(d, "endeudamiento_mensual_mediana_pct")),
         Caso("¿Qué porcentaje de clientes está en rojo?", "indicadores", lambda d: _fmt(d, "pct_clientes_semaforo_alto")),
@@ -124,14 +133,16 @@ def banco_preguntas(datos: asis.DatosAsistente) -> list[Caso]:
         Caso("¿Cuánto perderíamos en un escenario severo?", "escenarios", lambda d: _escenario(d, "severo", "perdida_esperada")),
         Caso("¿Nos alcanza el colchón en el escenario adverso?", "escenarios",
              lambda d: [] if d.simulacion_cartera.empty else
-             [rep.fmt_pct(d.simulacion_cartera.set_index("escenario").loc["adverso", "prob_superar_colchon_pct"])]),
+             [rep.fmt_pct(d.simulacion_cartera.set_index("escenario").loc["adverso", "prob_superar_colchon_pct"])]
+             + _escenario(d, "adverso", "var_99_9")),
         Caso("¿Cuál es el peor caso de pérdida?", "escenarios",
              lambda d: _escenario(d, "base", "var_99_9") + _escenario(d, "severo", "var_99_9")),
         Caso("¿El cliente demo aguanta perder su empleo?", "cliente_demo", lambda d: _demo(d, "desempleo")),
         Caso("¿Qué pasa con el cliente demo si hay inflación?", "cliente_demo", lambda d: _demo(d, "inflacion")),
         Caso("¿Cuál es el pronóstico del cliente demo?", "cliente_demo",
              lambda d: [] if d.pronostico.empty else [rep.fmt_usd(
-                 d.pronostico.query("serie == 'ingreso' and tipo == 'pronostico'")["valor"].mean())]),
+                 d.pronostico.query(f"serie == '{serie}' and tipo == 'pronostico'")["valor"].mean())
+                 for serie in ("ingreso", "gasto")]),
     ]
 
 

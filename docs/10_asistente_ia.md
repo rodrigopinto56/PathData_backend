@@ -76,7 +76,7 @@ docker compose logs -f ollama-init
 - **Memoria:** Docker Desktop debe tener al menos 6 GB asignados (Settings → Resources) con `llama3.2:3b`, o 10 GB con `llama3.1:8b`.
 - **Velocidad:** sin GPU, una respuesta tarda entre 5 y 30 s, según la máquina. Es normal.
 
-## 5. Pruebas (`tests/test_asistente_financiero.py`, 31 pruebas)
+## 5. Pruebas (`tests/test_asistente_financiero.py`, 33 pruebas)
 
 - **Enrutador:** cada pregunta de ejemplo llega a la consulta correcta, y las preguntas del cliente demo no se mezclan con la cartera.
 - **Consultas:** cada una trae los datos correctos (por ejemplo, los prioritarios son los de mayor índice y los segmentos salen ordenados y en español), y las tablas faltantes no rompen nada.
@@ -117,6 +117,26 @@ Qué esperar:
 - **Enrutamiento:** 100% en el banco, medido sin IA. El banco lo escribió el mismo equipo, así que con preguntas reales de usuarios será menor.
 - **Veracidad final:** cercana a 100% por diseño. Una respuesta con cifras que no están en los datos nunca se muestra, porque se reemplaza por los datos exactos.
 - **`exito_ia_pct` y `veracidad_ia_primer_intento_pct`:** son la medida honesta de qué tan bien redacta el modelo. Si quedan por debajo de 84% con `llama3.2:3b`, lo siguiente es probar `llama3.1:8b`.
+
+### Resultados medidos (`llama3.2:3b`, CPU, fecha 2026/10/28)
+
+| Métrica | 1ª medición | Meta |
+|---|---|---|
+| Enrutamiento | 100% | ≥ 84% |
+| Veracidad de la IA al primer intento | 86.7% | ≥ 84% |
+| Veracidad final (lo que ve el usuario) | 100% | ≥ 84% |
+| Éxito de la IA | 76.7% | — |
+| Éxito final | 80.0% | ≥ 84% |
+| Tiempo promedio por respuesta | 21.8 s | — |
+
+Fallas encontradas y ajustes:
+- **Leer una tabla y elegir el máximo** (región con más riesgo): ahora cada consulta trae un **"Dato principal"** ya calculado por código.
+- **Redondeos** ("574" en lugar de "574.05"): el verificador acepta redondeos y los puntajes se muestran sin decimales.
+- **Respuestas correctas que el evaluador no aceptaba:**
+  - "no cumple la meta" sin cifra;
+  - el pronóstico del gasto en lugar del ingreso.
+
+Después de estos ajustes hay que volver a medir.
 
 ## 7. Limitaciones
 

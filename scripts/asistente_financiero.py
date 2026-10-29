@@ -197,6 +197,8 @@ def _fmt_kpi(valor, unidad: str) -> str:
         return rep.fmt_pct(valor)
     if unidad == "prestamos":
         return rep.fmt_int(valor)
+    if str(unidad).startswith("puntos") and valor is not None and not pd.isna(valor):
+        return f"{valor:,.0f}"  # "574", no "574.05": el modelo lo redondearia y pareceria inventado
     return "N/D" if valor is None or pd.isna(valor) else f"{valor:,.2f}".rstrip("0").rstrip(".")
 
 
@@ -237,7 +239,16 @@ def consulta_segmentos(datos: DatosAsistente, dimension: str) -> str:
     tabla = rep.riesgo_por_segmento(datos.segmentos, dimension)
     if tabla.empty:
         return f"No hay datos por {rep.NOMBRE_DIMENSION.get(dimension, dimension).lower()} para esta fecha."
-    lineas = [f"Riesgo por {rep.NOMBRE_DIMENSION[dimension].lower()} (de mayor a menor índice de riesgo; meta del índice: menos de 40):"]
+    nombre = rep.NOMBRE_DIMENSION[dimension].lower()
+    lineas = []
+    if "Índice de riesgo" in tabla.columns and len(tabla) > 1:
+        # El dato que casi siempre se pregunta, ya calculado: a un modelo pequeno le
+        # cuesta elegir el maximo de una lista.
+        mayor, menor = tabla.iloc[0], tabla.iloc[-1]
+        lineas.append(f"Dato principal: por {nombre}, el mayor riesgo está en {mayor['Segmento']} "
+                      f"(índice {mayor['Índice de riesgo']:.0f}) y el menor en {menor['Segmento']} "
+                      f"(índice {menor['Índice de riesgo']:.0f}).")
+    lineas.append(f"Riesgo por {nombre} (de mayor a menor índice de riesgo; meta del índice: menos de 40):")
     for _, f in tabla.iterrows():
         partes = [f"{f['Segmento']}: índice {f['Índice de riesgo']:.0f}" if "Índice de riesgo" in f else f"{f['Segmento']}"]
         if "Clientes" in f:
@@ -285,7 +296,8 @@ def consulta_prioritarios(datos: DatosAsistente, cuantos: int = 5) -> str:
         return "El detalle por cliente no está disponible para esta fecha."
     rojos = datos.clientes[datos.clientes["indice_riesgo_consolidado"] >= 70]
     top = rojos.sort_values("indice_riesgo_consolidado", ascending=False).head(cuantos)
-    lineas = [f"Clientes en rojo (índice de 70 o más): {rep.fmt_int(len(rojos))}. Los {len(top)} más riesgosos:"]
+    lineas = [f"Dato principal: llamar primero a {', '.join(top['user_id'].astype(str))} (los de mayor índice de riesgo).",
+              f"Clientes en rojo (índice de 70 o más): {rep.fmt_int(len(rojos))}. Los {len(top)} más riesgosos:"]
     lineas += [f"- {_describir_cliente(c)}" for _, c in top.iterrows()]
     return "\n".join(lineas)
 
@@ -298,7 +310,10 @@ def consulta_escenarios(datos: DatosAsistente) -> str:
     lineas = [
         f"Simulación Monte Carlo de la cartera ({rep.fmt_int(base['simulaciones'])} años simulados por escenario, "
         f"{rep.fmt_int(base['prestamos'])} préstamos). Colchón actual (reservas + capital para aguantar 1 año de cada 1,000): "
-        f"{rep.fmt_usd(base['var_99_9'])}."
+        f"{rep.fmt_usd(base['var_99_9'])}.",
+        "Dato principal, ¿alcanza el colchón actual?: " + "; ".join(
+            f"escenario {e['nombre']}: se rebasaría en {rep.fmt_pct(e['prob_superar_colchon_pct'])} de los años"
+            for _, e in sim.iterrows()) + ".",
     ]
     for _, e in sim.iterrows():
         lineas.append(
@@ -423,11 +438,23 @@ def _numeros(texto: str) -> set[str]:
     return {n.replace(",", "").rstrip(".") for n in PATRON_NUMERO.findall(texto)}
 
 
+def _con_redondeos(numeros: set[str]) -> set[str]:
+    """Acepta tambien la cifra redondeada (152.53 -> 152.5 / 153): redondear no es inventar."""
+    variantes = set(numeros)
+    for numero in numeros:
+        try:
+            valor = float(numero)
+        except ValueError:
+            continue
+        variantes |= {f"{valor:.0f}", f"{valor:.1f}", f"{valor:.2f}"}
+    return variantes
+
+
 def cifras_no_respaldadas(respuesta: str, contexto: str, pregunta: str = "") -> list[str]:
     """Cifras de la respuesta que no aparecen en los datos ni en la pregunta.
     Se ignoran numeros de hasta 2 digitos sin decimales (meses, "3 clientes",
     "1 de 100"...), que generan falsos positivos."""
-    permitidas = _numeros(contexto) | _numeros(pregunta)
+    permitidas = _con_redondeos(_numeros(contexto) | _numeros(pregunta))
     dudosas = []
     for numero in sorted(_numeros(respuesta)):
         if "." not in numero and len(numero) <= 2:
