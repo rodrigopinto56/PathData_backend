@@ -93,13 +93,13 @@ def test_consulta_cliente_existente_e_inexistente(datos):
 def test_prioritarios_son_los_de_mayor_indice(datos):
     texto = A.consulta_prioritarios(datos, cuantos=3)
     peor = datos.clientes.sort_values("indice_riesgo_consolidado", ascending=False).iloc[0]["user_id"]
-    assert peor in texto.splitlines()[1]
+    assert peor in texto.splitlines()[2]  # [0] dato principal, [1] encabezado, [2] el mas riesgoso
 
 
 def test_segmentos_en_espanol_y_ordenados(datos):
     texto = A.consulta_segmentos(datos, "region")
     assert "Norte" in texto or "Sur" in texto
-    indices = [float(l.split("índice ")[1].split(",")[0]) for l in texto.splitlines()[1:]]
+    indices = [float(l.split("índice ")[1].split(",")[0]) for l in texto.splitlines() if l.startswith("- ")]
     assert indices == sorted(indices, reverse=True)
 
 
@@ -277,3 +277,17 @@ def test_evaluacion_distingue_respuestas_buenas_y_malas(datos):
     _, mala = E.evaluar(datos, FakeListChatModel(responses=["No tengo información.", "No tengo información."]), [caso])
     assert buena["exito_ia_pct"] == 100 and buena["veracidad_ia_primer_intento_pct"] == 100
     assert mala["exito_ia_pct"] == 0 and mala["veracidad_final_pct"] == 100  # el respaldo muestra datos exactos
+
+
+def test_redondear_no_es_inventar():
+    contexto = "Pérdida esperada: $152.53 millones. Credit score promedio: 574.05"
+    assert A.cifras_no_respaldadas("Se esperan perder 152.5 millones; el score es 574.", contexto) == []
+    assert A.cifras_no_respaldadas("Se esperan perder 160 millones.", contexto) == ["160"]
+
+
+def test_dato_principal_ya_calculado(datos):
+    segmentos = A.consulta_segmentos(datos, "region")
+    mayor = segmentos.splitlines()[2].split(":")[0].lstrip("- ")  # primer renglon de la tabla
+    assert segmentos.startswith("Dato principal") and f"mayor riesgo está en {mayor}" in segmentos
+    assert "Dato principal, ¿alcanza el colchón actual?" in A.consulta_escenarios(datos)
+    assert A.consulta_prioritarios(datos).startswith("Dato principal: llamar primero a")
