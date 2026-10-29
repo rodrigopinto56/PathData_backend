@@ -333,4 +333,10 @@ Aparecieron al correr la malla con datos reales: el entrenamiento semanal salía
 - **La IA redacta, el código busca los datos:** un modelo pequeño elige mal herramientas y puede inventar números. Así, lo que debe ser exacto lo hace código probado.
 - **Llama 3.2 3B por defecto:** corre en CPU con ~4 GB de RAM. Con más memoria se cambia a `llama3.1:8b` sin tocar código.
 
+**Ajuste tras la primera prueba con Llama real:** el modelo de 3B copió el formato, calificó como "crítico" un indicador que sí cumplía su meta y se negó a responder teniendo los datos. Se agregaron cuatro mejoras:
+- control de calidad con reintento y respaldo de datos exactos;
+- un ejemplo de buena respuesta en el prompt;
+- nombres de negocio sin fórmulas en los KPIs;
+- la evaluación automática (`scripts/evaluar_asistente.py`, 30 preguntas, meta ≥ 84%).
+
 **Evidencia:** prueba de punta a punta con datos sintéticos (pipeline → Gold → tablero → chat) en modo básico y contra un servidor que imita la API de Ollama. La redacción con el modelo real se valida en la máquina del equipo, porque en el entorno de desarrollo la descarga de modelos estaba bloqueada.

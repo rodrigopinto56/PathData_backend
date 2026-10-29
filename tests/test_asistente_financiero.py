@@ -130,13 +130,53 @@ def test_modo_basico_sin_llm_regresa_los_datos(datos):
     assert resultado["consultas"] == ["riesgo por segmento"]
 
 
-def test_con_llm_usa_su_respuesta_y_verifica_cifras(datos):
+def _cifra_real(datos) -> str:
     contexto = A.ejecutar_rutas(datos, A.enrutar("¿Cómo está la cartera?"))
-    cifra_real = A.PATRON_NUMERO.findall(contexto.split("Clientes en la cartera: ")[1])[0]
-    llm = FakeListChatModel(responses=[f"La cartera tiene {cifra_real} clientes y una pérdida de $987,654,321."])
+    return A.PATRON_NUMERO.findall(contexto.split("Clientes en la cartera: ")[1])[0]
+
+
+def test_respuesta_correcta_pasa_a_la_primera(datos):
+    llm = FakeListChatModel(responses=[f"La cartera tiene {_cifra_real(datos)} clientes."])
     resultado = A.responder("¿Cómo está la cartera?", datos, llm=llm)
-    assert resultado["modo"] == "ia"
-    assert resultado["cifras_no_verificadas"] == ["987654321"]  # la inventada; la real si esta en los datos
+    assert resultado["modo"] == "ia" and resultado["reintentos"] == 0 and resultado["problemas"] == []
+
+
+def test_cifra_inventada_se_corrige_con_un_reintento(datos):
+    llm = FakeListChatModel(responses=[
+        "La cartera perdería $987,654,321.",                      # 1er intento: cifra inventada
+        f"La cartera tiene {_cifra_real(datos)} clientes.",       # reintento: correcto
+    ])
+    resultado = A.responder("¿Cómo está la cartera?", datos, llm=llm)
+    assert resultado["modo"] == "ia" and resultado["reintentos"] == 1
+    assert "987654321" in resultado["problemas"][0] and resultado["cifras_no_verificadas"] == []
+
+
+def test_si_falla_dos_veces_muestra_los_datos_exactos(datos):
+    llm = FakeListChatModel(responses=["Se perderían $987,654,321.", "Se perderían $555,555,555."])
+    resultado = A.responder("¿Cómo está la cartera?", datos, llm=llm)
+    assert resultado["modo"] == "respaldo" and "Diagnóstico general" in resultado["respuesta"]
+    assert "987654321" not in resultado["respuesta"]
+
+
+def test_control_detecta_negarse_con_datos_y_copiar_formato(datos):
+    contexto = A.ejecutar_rutas(datos, A.enrutar("¿Cuál es la pérdida esperada?"))
+    assert A.problemas_respuesta("No tengo información sobre la pregunta.", contexto, "")
+    assert A.problemas_respuesta("DATOS:\n- Clientes: 5%", contexto, "")
+    # Si de verdad no hay datos (cliente inexistente), decir "no tengo informacion" es correcto
+    sin_datos = A.consulta_cliente(datos, "U99999")
+    assert A.problemas_respuesta("No tengo información de ese cliente.", sin_datos, "") == []
+
+
+def test_pregunta_de_perdida_del_ano_consulta_la_simulacion():
+    rutas = [c for c, _ in A.enrutar("¿Cuál es la estimación de pérdida este año?")]
+    assert rutas[:2] == ["indicadores", "escenarios"]
+
+
+def test_indicadores_sin_formulas(datos):
+    texto = A.consulta_indicadores(datos, ["perdida_esperada_usd", "perdida_esperada_pct_exposicion"])
+    assert "sum(" not in texto and "PD x EAD" not in texto
+    assert "Pérdida esperada de la cartera" in texto
+    assert "Saludable (cumple la meta)" in texto or "Requiere atención (no cumple la meta)" in texto
 
 
 def test_si_el_llm_falla_cae_a_modo_basico(datos):
@@ -213,6 +253,27 @@ def test_integracion_chat_ollama(datos, ollama_falso):
     resultado = A.responder("¿Cómo está la cartera?", datos, llm=llm)
     assert resultado["modo"] == "ia" and resultado["respuesta"] == "La cartera está saludable."
     mensajes = _OllamaFalso.recibido["messages"]
-    assert mensajes[0]["role"] == "system" and "No inventes cifras" in mensajes[0]["content"]
-    assert "Diagnóstico general" in mensajes[1]["content"]  # los datos viajan en el prompt
+    assert [m["role"] for m in mensajes] == ["system", "user", "assistant", "user"]  # reglas + ejemplo + pregunta
+    assert "Copia las cifras exactamente" in mensajes[0]["content"]
+    assert "Diagnóstico general" in mensajes[3]["content"]  # los datos viajan en el prompt
     assert _OllamaFalso.recibido["options"]["temperature"] == 0
+
+
+# --- Evaluacion automatica (scripts/evaluar_asistente.py) -------------------------
+def test_evaluacion_enrutamiento_y_hechos_del_banco(datos):
+    import evaluar_asistente as E
+
+    tabla, resumen = E.evaluar(datos, None)  # modo basico: mide enrutamiento y que los datos contengan el hecho
+    assert resumen["preguntas"] >= 30 and resumen["enrutamiento_pct"] >= 95
+    assert resumen["exito_final_pct"] >= 95 and resumen["veracidad_final_pct"] == 100
+
+
+def test_evaluacion_distingue_respuestas_buenas_y_malas(datos):
+    import evaluar_asistente as E
+
+    caso = E.Caso("¿Cuál es la pérdida esperada?", "indicadores", lambda d: E._fmt(d, "perdida_esperada_usd"))
+    correcta = f"Se estima no recuperar {caso.hechos(datos)[0]}."
+    _, buena = E.evaluar(datos, FakeListChatModel(responses=[correcta]), [caso])
+    _, mala = E.evaluar(datos, FakeListChatModel(responses=["No tengo información.", "No tengo información."]), [caso])
+    assert buena["exito_ia_pct"] == 100 and buena["veracidad_ia_primer_intento_pct"] == 100
+    assert mala["exito_ia_pct"] == 0 and mala["veracidad_final_pct"] == 100  # el respaldo muestra datos exactos

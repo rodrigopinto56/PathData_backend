@@ -728,8 +728,10 @@ for turno in historial[-6:]:
         st.markdown(_markdown_seguro(turno["pregunta"]))
     with st.chat_message("assistant"):
         st.markdown(_markdown_seguro(turno["respuesta"]))
-        modo = f"IA ({asis.OLLAMA_MODEL})" if turno["modo"] == "ia" else "básico (sin IA)"
-        st.caption(f"Datos consultados: {', '.join(turno['consultas'])} · Modo: {modo}")
+        modo = {"ia": f"IA ({asis.OLLAMA_MODEL})", "respaldo": "datos exactos (la IA no pasó el control de calidad)"}.get(
+            turno["modo"], "básico (sin IA)")
+        control = " · corregida tras el control de calidad" if turno["modo"] == "ia" and turno.get("reintentos") else ""
+        st.caption(f"Datos consultados: {', '.join(turno['consultas'])} · Modo: {modo}{control}")
         if turno["cifras_no_verificadas"]:
             st.warning("Revisa estas cifras: no aparecen en los datos consultados → "
                        + ", ".join(turno["cifras_no_verificadas"]))
