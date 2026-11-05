@@ -14,6 +14,9 @@ x-airflow-common: &airflow-common
     SILVER_BUCKET: "silver-layer"
     GOLD_BUCKET: "gold-layer"
     ML_BUCKET: "ml-models"
+    # Semana 18: credenciales de MinIO desde .env (antes, valores por defecto en el codigo)
+    MINIO_ROOT_USER: "${MINIO_ROOT_USER:?Falta MINIO_ROOT_USER en .env (copia .env.example a .env)}"
+    MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?Falta MINIO_ROOT_PASSWORD en .env (copia .env.example a .env)}"
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -62,11 +65,23 @@ services:
     command: webserver
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     restart: always
 
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --local"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
     restart: always
 
   minio:
@@ -75,11 +90,17 @@ services:
       - "9000:9000" # Port API (S3)
       - "9001:9001" # Port Interface graphic
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: password123
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?Falta MINIO_ROOT_USER en .env (copia .env.example a .env)}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?Falta MINIO_ROOT_PASSWORD en .env (copia .env.example a .env)}"
     command: server /data --console-address ":9001"
     volumes:
       - minio-volume:/data
+    # Semana 18: Docker marca el contenedor como unhealthy si MinIO deja de responder
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/minio/health/live || mc ready local"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: always
 
   spark:
@@ -119,13 +140,20 @@ services:
       - "8501:8501"
     environment:
       MINIO_ENDPOINT: "http://minio:9000"
-      MINIO_ROOT_USER: "admin"
-      MINIO_ROOT_PASSWORD: "password123"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?Falta MINIO_ROOT_USER en .env (copia .env.example a .env)}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?Falta MINIO_ROOT_PASSWORD en .env (copia .env.example a .env)}"
       SILVER_BUCKET: "silver-layer"
       GOLD_BUCKET: "gold-layer"
       ML_BUCKET: "ml-models"
+      # Semana 18: observabilidad (corridas exportadas, logs y evaluaciones)
+      CARPETA_REPORTES: "/app/data/reports"
     volumes:
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     depends_on:
       - minio
     restart: unless-stopped
@@ -142,13 +170,22 @@ services:
       - "8502:8502"
     environment:
       MINIO_ENDPOINT: "http://minio:9000"
-      MINIO_ROOT_USER: "admin"
-      MINIO_ROOT_PASSWORD: "password123"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?Falta MINIO_ROOT_USER en .env (copia .env.example a .env)}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?Falta MINIO_ROOT_PASSWORD en .env (copia .env.example a .env)}"
       GOLD_BUCKET: "gold-layer"
       ML_BUCKET: "ml-models"
       # Semana 17: asistente con IA local
       OLLAMA_URL: "http://ollama:11434"
       OLLAMA_MODEL: "${OLLAMA_MODEL:-llama3.2:3b}"
+      # Semana 18: registro de preguntas del asistente y evaluaciones (los lee la Vista 0)
+      CARPETA_REPORTES: "/app/data/reports"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8502/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     depends_on:
       - minio
       - ollama
@@ -164,6 +201,11 @@ services:
       - "11434:11434"
     volumes:
       - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   # Descarga el modelo UNA vez (unos 2 GB para llama3.2:3b) y termina.

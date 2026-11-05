@@ -13,7 +13,10 @@
 pip install kagglehub
 python scripts/downloadRawData.py
 
-# 2. Construir imágenes e inicializar Airflow
+# 2. Credenciales (Semana 18): docker-compose.yml las lee de .env, que no se sube a Git
+Copy-Item .env.example .env      # y ajusta los valores si quieres
+
+# 3. Construir imágenes e inicializar Airflow
 docker compose build
 docker compose up airflow-init
 docker compose up -d
@@ -22,7 +25,7 @@ docker compose up -d
 | Servicio | URL | Credenciales |
 |---|---|---|
 | Airflow | http://localhost:8080 | airflow / airflow |
-| MinIO (consola) | http://localhost:9001 | admin / password123 |
+| MinIO (consola) | http://localhost:9001 | Las de `.env` (`MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`) |
 | Spark UI | http://localhost:8081 | — |
 | Dashboard técnico | http://localhost:8501 | — |
 | Dashboard ejecutivo | http://localhost:8502 | — |
@@ -43,8 +46,11 @@ Estas piezas **no están versionadas** y se crean a mano:
    | `minio_s3_conn` | Amazon Web Services | Access key `admin`, secret `password123`, Extra: `{"endpoint_url": "http://minio:9000"}` |
    | `spark_default` | Spark | Host `spark://spark`, puerto `7077` |
 
-3. **Módulo de auditoría de Bronze**: `ingestionBronzeLayer.py` importa `bronzeAudit`, que vive en
-   `plugins/` (carpeta excluida por `.gitignore`). Ver [06 — Deuda técnica](06_decisiones_y_deuda_tecnica.md).
+3. **Observabilidad (Semana 18)**: activa `monitoreo_dag` en Airflow (el switch de la izquierda). Corre cada hora
+   y alimenta la Vista 0 del dashboard técnico; para ver datos al momento, dispáralo a mano (▶).
+
+> `bronzeAudit` ya está versionado en `scripts/bronzeAudit.py` (antes solo existía en `plugins/`). Si tienes una
+> copia vieja en `plugins/bronzeAudit.py`, bórrala para que Airflow use la del repositorio.
 
 ## 3. Ejecutar el pipeline
 
@@ -129,7 +135,7 @@ pip install pandas pyarrow scikit-learn scipy pyyaml pytest langchain-ollama
 pytest tests/
 ```
 
-103 pruebas en 6 archivos (`test_gold_kpis.py`, `test_reporte_ejecutivo.py`, `test_modelo_credito.py`, `test_prediccion_financiera.py`, `test_simulador_montecarlo.py`, `test_asistente_financiero.py`). No necesitan Ollama.
+116 pruebas en 7 archivos (`test_gold_kpis.py`, `test_reporte_ejecutivo.py`, `test_modelo_credito.py`, `test_prediccion_financiera.py`, `test_simulador_montecarlo.py`, `test_asistente_financiero.py`, `test_observabilidad.py`). No necesitan Ollama ni Airflow.
 Usan datos sintéticos con el esquema real (`tests/datos_sinteticos.py`) y no necesitan Docker ni descargas. Cubren:
 - **Modelo estrella**: tablas completas, integridad referencial, detección de FK huérfanas, grano, miembro "Sin prestamo", normalización y pérdida esperada.
 - **KPIs**: catálogo completo, cuadre de la exposición con la tabla de hechos, semáforo de umbrales y cuadre de segmentos contra el total.
@@ -146,6 +152,7 @@ Usan datos sintéticos con el esquema real (`tests/datos_sinteticos.py`) y no ne
 | `dags/`, `scripts/`, `config/`, `src/spark/` | Nada: están montados como volumen. `docker compose restart airflow-scheduler airflow-webserver` si un DAG no refleja el cambio. |
 | `dashboard/`, `scripts/reporte_ejecutivo.py`, `scripts/asistente_financiero.py`, `scripts/simulador_montecarlo.py`, `config/simulador.yml` o `Dockerfile.streamlit` | Reconstruir: `docker compose build streamlit streamlit-ejecutivo` y `docker compose up -d streamlit streamlit-ejecutivo` (el código se **copia** a la imagen). |
 | `Dockerfile` (dependencias) | `docker compose build` y `docker compose up -d` |
+| `docker-compose.yml` o `.env.example` | Revisa que tu `.env` tenga todas las variables de `.env.example`; luego `docker compose up -d` |
 
 ## 6. Troubleshooting (problemas reales encontrados)
 
@@ -167,4 +174,8 @@ Usan datos sintéticos con el esquema real (`tests/datos_sinteticos.py`) y no ne
 | Asistente: *"No se pudo conectar con Ollama"* | El servicio `ollama` no está levantado | `docker compose up -d ollama` y recargar el tablero (responde en modo básico mientras tanto) |
 | Asistente: *"el modelo … no está descargado"* | `ollama-init` no terminó o falló la descarga | `docker compose logs ollama-init`; reintentar con `docker compose exec ollama ollama pull llama3.2:3b` |
 | Asistente muy lento o el contenedor `ollama` se reinicia | Poca memoria para el modelo | Subir la memoria de Docker Desktop (≥ 6 GB) o usar un modelo más chico (`llama3.2:1b`) |
+| `docker compose up` dice *"Falta MINIO_ROOT_USER en .env"* | No existe `.env` o le faltan variables | `Copy-Item .env.example .env` (o agrega las líneas que falten) |
+| Vista 0: *"Todavía no hay métricas de Airflow"* | `monitoreo_dag` está pausado o no ha corrido | Actívalo en Airflow o dispáralo a mano |
+| Vista 0: *"La exportación de Airflow tiene más de 2 horas"* | `monitoreo_dag` dejó de correr (scheduler caído o DAG pausado) | Revisa el scheduler (`docker compose ps`: debe decir *healthy*) y el DAG |
+| Un contenedor aparece como *unhealthy* en `docker compose ps` | Su healthcheck falla (servicio colgado o sin memoria) | `docker compose logs <servicio>` y `docker compose restart <servicio>` |
 | Vista 1 muestra valores de `nivel` "OTRO" | Eventos con un nivel distinto de INFO/ALERTA (p. ej. `ERROR`) | El dashboard los agrupa y los avisa; revisar `pipeline_log.jsonl` |

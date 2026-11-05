@@ -38,6 +38,8 @@ import pendulum
 from airflow.decorators import dag, task
 from airflow.operators.python import get_current_context
 
+from comun_dags import argumentos_base  # dags/comun_dags.py
+
 sys.path.append("/opt/airflow/scripts")
 from espera_dags import esperar_dag  # dags/espera_dags.py
 from construir_gold import construir_gold_particion
@@ -50,11 +52,8 @@ logger = logging.getLogger("transformacion_gold_dag")
 
 LOG_EVENTS_PATH = "/opt/airflow/data/reports/pipeline_log.jsonl"
 
-default_args = {
-    "owner": "data-engineering",
-    "retries": 2,
-    "retry_delay": pendulum.duration(minutes=5),
-}
+# Semana 18: reintentos, limite de tiempo por tarea y aviso de falla comunes (dags/comun_dags.py)
+default_args = argumentos_base(reintentos=2, timeout_min=60)
 
 
 def registrar_evento(evento: dict) -> None:

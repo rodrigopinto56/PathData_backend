@@ -9,6 +9,7 @@ import io
 import json
 import logging
 import os
+import sys
 
 import pendulum
 import pandas as pd
@@ -18,7 +19,10 @@ from airflow.exceptions import AirflowFailException, AirflowSkipException
 from airflow.operators.python import get_current_context
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 
-from bronzeAudit import audit_bronze_layer
+from comun_dags import argumentos_base  # dags/comun_dags.py
+
+sys.path.append("/opt/airflow/scripts")
+from bronzeAudit import audit_bronze_layer  # scripts/bronzeAudit.py (versionado desde S18)
 
 
 logger = logging.getLogger("ingesta_bronze_dag")
@@ -77,26 +81,8 @@ def registrar_evento(evento: dict) -> None:
     logger.info(json.dumps(evento))
 
 
-def alertar_fallo(context: dict) -> None:
-    """on_failure_callback: se dispara automaticamente si CUALQUIER tarea
-    del DAG falla, tras agotar sus reintentos."""
-    ti = context["task_instance"]
-    registrar_evento({
-        "nivel": "ALERTA",
-        "dag_id": context["dag"].dag_id,
-        "task_id": ti.task_id,
-        "logical_date": str(context["logical_date"]),
-        "intento": ti.try_number,
-        "error": str(context.get("exception")),
-    })
-
-
-default_args = {
-    "owner": "data-engineering",
-    "retries": 3,
-    "retry_delay": pendulum.duration(minutes=5),
-    "on_failure_callback": alertar_fallo,
-}
+# Semana 18: reintentos, limite de tiempo por tarea y aviso de falla comunes (dags/comun_dags.py)
+default_args = argumentos_base(reintentos=3, timeout_min=30)
 
 
 @dag(

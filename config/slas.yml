@@ -1,0 +1,96 @@
+# config/slas.yml
+#
+# Semana 18: observabilidad. Acuerdos de nivel de servicio (SLA) de la
+# plataforma. Los evalua scripts/observabilidad.py en el dashboard tecnico
+# (Vista 0) y monitoreo_dag (cada hora, registra un evento cuando un SLA
+# cambia de estado).
+#
+# metrica:   que se mide (ver METRICAS en scripts/observabilidad.py)
+# operador:  ">=" la meta es un minimo, "<=" la meta es un maximo
+# severidad: alta = afecta lo que ve el negocio hoy; media = degradacion
+
+zona_horaria: America/Mexico_City
+ventana_dias: 7          # los SLA se miden sobre los ultimos 7 dias
+historial_dias: 30       # lo que monitoreo_dag exporta de Airflow
+
+dags_monitoreados:
+  - ingesta_bronze_dag
+  - transformacion_silver_dag
+  - transformacion_gold_dag
+  - entrenamiento_modelo_dag
+
+slas:
+  - id: frescura_gold
+    nombre: Datos listos a tiempo
+    descripcion: "Gold de cada dia listo antes de las 07:00 (hora de Mexico) del dia siguiente"
+    metrica: frescura_gold_pct
+    hora_limite: "07:00"
+    operador: ">="
+    meta: 95
+    unidad: "%"
+    severidad: alta
+
+  - id: exito_corridas
+    nombre: Corridas exitosas
+    descripcion: "Porcentaje de corridas terminadas con exito (todos los DAGs de la malla)"
+    metrica: tasa_exito_pct
+    operador: ">="
+    meta: 95
+    unidad: "%"
+    severidad: alta
+
+  - id: duracion_gold
+    nombre: Duracion de Gold
+    descripcion: "Percentil 95 de la duracion de transformacion_gold_dag"
+    metrica: duracion_gold_p95_min
+    operador: "<="
+    meta: 15
+    unidad: min
+    severidad: media
+
+  - id: calidad_silver
+    nombre: Calidad de Silver
+    descripcion: "Reglas de calidad cumplidas en el ultimo reporte de cada fuente (la peor fuente)"
+    metrica: calidad_silver_min_pct
+    operador: ">="
+    meta: 95
+    unidad: "%"
+    severidad: alta
+
+  - id: modelo_vigente
+    nombre: Modelo actualizado
+    descripcion: "Dias desde que se entreno el modelo de riesgo campeon"
+    metrica: dias_desde_entrenamiento
+    operador: "<="
+    meta: 14
+    unidad: dias
+    severidad: media
+
+  - id: asistente_ia
+    nombre: Asistente responde con IA
+    descripcion: "Respuestas redactadas por la IA que pasaron el control de calidad (sin respaldo ni modo basico)"
+    metrica: asistente_pct_ia
+    operador: ">="
+    meta: 84
+    unidad: "%"
+    minimo_preguntas: 5
+    severidad: media
+
+  - id: asistente_latencia
+    nombre: Tiempo de respuesta del asistente
+    descripcion: "Percentil 95 del tiempo de respuesta del asistente"
+    metrica: asistente_p95_seg
+    operador: "<="
+    meta: 60
+    unidad: s
+    minimo_preguntas: 5
+    severidad: media
+
+  - id: asistente_evaluacion
+    nombre: Exactitud del asistente
+    descripcion: "Exito final en la ultima evaluacion automatica (banco de 30 preguntas)"
+    metrica: evaluacion_exito_final_pct
+    operador: ">="
+    meta: 84
+    unidad: "%"
+    severidad: media

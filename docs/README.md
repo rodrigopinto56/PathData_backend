@@ -4,14 +4,14 @@ Backend de datos del proyecto **BBVA Path Data**: un pipeline con **arquitectura
 (Bronze → Silver → Gold) que ingiere datos financieros públicos, los limpia y valida,
 los modela para análisis y calcula KPIs financieros y de negocio, visibles en un dashboard.
 
-Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 17** (asistente financiero con IA local).
+Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 18** (observabilidad y hardening).
 
 ## Contenido
 
 | Documento | Qué responde |
 |---|---|
 | [01 — Arquitectura](01_arquitectura.md) | ¿Cómo está armado el sistema? Componentes, flujo de datos, almacenamiento y DAGs. |
-| [02 — Bitácora semanal (S4–S17)](02_bitacora_semanal.md) | ¿Qué se construyó cada semana, con qué archivos y por qué? |
+| [02 — Bitácora semanal (S4–S18)](02_bitacora_semanal.md) | ¿Qué se construyó cada semana, con qué archivos y por qué? |
 | [03 — Diccionario de datos](03_diccionario_datos.md) | ¿Qué columnas y reglas tiene cada fuente y cada tabla por capa? |
 | [04 — Catálogo de KPIs](04_kpis.md) | ¿Cómo se calcula cada KPI, cuál es su meta y cómo se interpreta? |
 | [05 — Operación y troubleshooting](05_operacion.md) | ¿Cómo levanto, ejecuto y pruebo el proyecto? ¿Qué hago si algo falla? |
@@ -20,6 +20,7 @@ Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 17** (as
 | [08 — Dataset para IA y modelo predictivo](08_dataset_ia_y_modelo.md) | ¿Con qué datos aprende el modelo, cómo se evalúa y qué límites tiene? |
 | [09 — Simulador Monte Carlo](09_simulador_montecarlo.md) | ¿Qué es Monte Carlo, cómo se simulan pérdidas y escenarios de estrés, y qué supone? |
 | [10 — Asistente financiero con IA](10_asistente_ia.md) | ¿Cómo responde preguntas en lenguaje natural con Ollama + Llama 3, sin inventar cifras? |
+| [11 — Observabilidad y hardening](11_observabilidad.md) | ¿Cómo se vigila sola la plataforma? Métricas, SLA, alertas, Vista 0 y guiones de presentación |
 
 ## Stack tecnológico
 
@@ -37,7 +38,7 @@ Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 17** (as
 | Visualización | Streamlit + Plotly | Dashboard técnico (8501) y dashboard ejecutivo (8502) |
 | Infraestructura | Docker Compose | Todos los servicios en contenedores |
 | Metadatos Airflow | PostgreSQL 15 | Base de datos interna de Airflow |
-| Pruebas | pytest | `tests/` (KPIs, reporte, modelo, pronóstico, simulador, asistente) |
+| Pruebas | pytest | `tests/` (KPIs, reporte, modelo, pronóstico, simulador, asistente, observabilidad) |
 
 ## Mapa rápido del repositorio
 
@@ -48,7 +49,9 @@ PathData_backend/
 │   ├── transformacion_silver_dag.py  # S8–S9: Bronze → Silver + calidad
 │   ├── transformacion_gold_dag.py    # S11–S16: Silver → Gold + KPIs + pronóstico + simulación
 │   ├── entrenamiento_modelo_dag.py   # S14–S15: features + entrenamiento del modelo
-│   └── espera_dags.py                # sensores: cada DAG espera al anterior
+│   ├── monitoreo_dag.py              # S18: métricas operativas y SLA (cada hora)
+│   ├── espera_dags.py                # sensores: cada DAG espera al anterior
+│   └── comun_dags.py                 # S18: timeouts, reintentos y aviso de falla comunes
 ├── src/spark/                    # Jobs de Spark
 │   ├── hello_spark.py                # S8: validación del clúster
 │   └── bronze_to_silver.py           # S8–S9: limpieza, cuarentena, dedup
@@ -66,13 +69,16 @@ PathData_backend/
 │   ├── prediccion_financiera.py      # S15: pronóstico del cliente demo
 │   ├── simulador_montecarlo.py       # S16: simulador Monte Carlo
 │   ├── asistente_financiero.py       # S17: asistente con IA (Ollama)
-│   └── evaluar_asistente.py          # S17: evaluación (veracidad y éxito)
+│   ├── evaluar_asistente.py          # S17: evaluación (veracidad y éxito)
+│   ├── observabilidad.py             # S18: métricas, SLA y alertas
+│   └── bronzeAudit.py                # S8: auditoría de Bronze (versionado en S18)
 ├── config/                       # Contratos declarativos
 │   ├── silver_schema.yml             # S9: reglas de Silver
 │   ├── gold_schema.yml               # S11–S12: modelo, métricas y KPIs
 │   ├── features.yml                  # S14: contrato de features
 │   ├── modelo_credito.yml            # S15: parámetros del modelo
-│   └── simulador.yml                 # S16: escenarios del simulador
+│   ├── simulador.yml                 # S16: escenarios del simulador
+│   └── slas.yml                      # S18: acuerdos de nivel de servicio
 ├── dashboard/                    # Streamlit: app.py (técnico, S10–S15) y ejecutivo.py (S13–S17)
 ├── tests/                        # S12: pruebas unitarias
 ├── pathDataBBVA.py               # S4: exploración y profiling
@@ -88,7 +94,7 @@ docker compose up -d
 # Airflow:   http://localhost:8080  (airflow / airflow)
 # MinIO:     http://localhost:9001  (admin / password123)
 # Spark UI:  http://localhost:8081
-# Dashboard técnico:   http://localhost:8501
+# Dashboard técnico:   http://localhost:8501  (Vista 0 = observabilidad)
 # Dashboard ejecutivo: http://localhost:8502  (incluye el asistente)
 # Ollama (IA local):   http://localhost:11434
 ```

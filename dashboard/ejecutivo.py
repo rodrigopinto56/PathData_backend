@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -32,11 +33,13 @@ import streamlit as st
 
 try:
     import asistente_financiero as asis
+    import observabilidad as obs
     import reporte_ejecutivo as rep
     import simulador_montecarlo as sim
 except ModuleNotFoundError:  # ejecucion local fuera del contenedor
     sys.path.append(os.path.join(os.path.dirname(__file__), "..", "scripts"))
     import asistente_financiero as asis
+    import observabilidad as obs
     import reporte_ejecutivo as rep
     import simulador_montecarlo as sim
 
@@ -721,7 +724,17 @@ pregunta = st.chat_input("Escribe tu pregunta sobre la cartera (por ejemplo: ¿p
 
 if pregunta:
     with st.spinner("Consultando los datos y redactando la respuesta…"):
-        historial.append({"pregunta": pregunta, **asis.responder(pregunta, datos_asistente, _llm() if ia_disponible else None)})
+        inicio = time.time()
+        resultado = asis.responder(pregunta, datos_asistente, _llm() if ia_disponible else None)
+        historial.append({"pregunta": pregunta, **resultado})
+        # Semana 18: una linea por pregunta para la observabilidad (Vista 0 del dashboard tecnico)
+        obs.registrar_pregunta({
+            "timestamp": pd.Timestamp.now(tz="America/Mexico_City").isoformat(), "fecha_datos": fecha,
+            "pregunta": pregunta[:200], "modo": resultado["modo"], "segundos": round(time.time() - inicio, 1),
+            "reintentos": resultado.get("reintentos", 0), "consultas": resultado["consultas"],
+            "cifras_no_verificadas": len(resultado.get("cifras_no_verificadas", [])),
+            "modelo": asis.OLLAMA_MODEL if resultado["modo"] != "basico" else None,
+        })
 
 for turno in historial[-6:]:
     with st.chat_message("user"):

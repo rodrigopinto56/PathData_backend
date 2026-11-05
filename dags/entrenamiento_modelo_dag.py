@@ -30,6 +30,8 @@ from airflow.decorators import dag, task
 from airflow.exceptions import AirflowSkipException
 from airflow.operators.python import get_current_context
 
+from comun_dags import argumentos_base  # dags/comun_dags.py
+
 sys.path.append("/opt/airflow/scripts")
 from features import construir_dataset_entrenamiento
 from modelo_credito import entrenar_y_registrar
@@ -38,11 +40,8 @@ logger = logging.getLogger("entrenamiento_modelo_dag")
 
 LOG_EVENTS_PATH = "/opt/airflow/data/reports/pipeline_log.jsonl"
 
-default_args = {
-    "owner": "data-engineering",
-    "retries": 1,
-    "retry_delay": pendulum.duration(minutes=5),
-}
+# Semana 18: reintentos, limite de tiempo por tarea y aviso de falla comunes (dags/comun_dags.py)
+default_args = argumentos_base(reintentos=1, timeout_min=120)
 
 
 def registrar_evento(evento: dict) -> None:
