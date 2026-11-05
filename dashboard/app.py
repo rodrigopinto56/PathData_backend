@@ -245,7 +245,7 @@ def seccion_observabilidad() -> None:
 
     corridas = entradas["corridas"]
     slas = obs.evaluar_slas(entradas, config, ahora)
-    alertas = obs.alertas_activas(slas, corridas, entradas["eventos"], ahora)
+    alertas = obs.alertas_activas(slas, corridas, entradas["eventos"], ahora, tareas=entradas["tareas"])
     general = obs.estado_general(slas, alertas)
 
     # --- Resumen en una linea ---
@@ -296,7 +296,10 @@ def seccion_observabilidad() -> None:
             st.info("Sin corridas exportadas todavia.")
         else:
             ultimas = corridas[corridas["start_date"] >= ahora - pd.Timedelta(days=3)].copy()
+            # En curso -> hasta ahora; fin anterior al inicio (corrida re-ejecutada) -> barra minima
             ultimas["fin"] = ultimas["end_date"].fillna(ahora)
+            ultimas["fin"] = ultimas["fin"].where(ultimas["fin"] >= ultimas["start_date"],
+                                                  ultimas["start_date"] + pd.Timedelta(minutes=1))
             ultimas["Estado"] = ultimas["state"].map(NOMBRE_ESTADO_CORRIDA).fillna(ultimas["state"])
             if not ultimas.empty:
                 fig = px.timeline(
