@@ -62,6 +62,7 @@ def test_resumen_por_dag(corridas_sanas):
     assert resumen.loc["transformacion_gold_dag", "tasa_exito_pct"] == 100
     assert resumen.loc["transformacion_gold_dag", "duracion_mediana_min"] == pytest.approx(6)
     assert resumen.loc["ingesta_bronze_dag", "corridas"] == 9
+    assert resumen.loc["ingesta_bronze_dag", "en_curso"] == 0
 
 
 def test_frescura_a_tiempo_y_tarde(corridas_sanas):
