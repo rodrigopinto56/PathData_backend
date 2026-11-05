@@ -186,3 +186,23 @@ def test_bronze_audit_detecta_particiones_incompletas(monkeypatch):
     problemas = {p["particion"]: p["detalle"] for p in B.revisar_particiones(B.agrupar_particiones(llaves))}
     assert set(problemas) == {"loan/2026/11/02", "loan/2026/11/03"}
     assert "faltan" in problemas["loan/2026/11/02"] and "sobran" in problemas["loan/2026/11/03"]
+
+
+def test_corrida_reejecutada_no_da_duracion_negativa():
+    fila = _corrida("entrenamiento_modelo_dag", "2026-11-01")
+    fila["end_date"] = fila["start_date"] - pd.Timedelta(days=2)  # Clear: inicio nuevo, fin viejo
+    corridas = O.preparar_corridas(pd.DataFrame([fila]), ZONA)
+    assert corridas["duracion_min"].isna().all()
+
+
+def test_alerta_dice_en_que_tarea_fallo(corridas_sanas, config):
+    fallida = _corrida("transformacion_silver_dag", "2026-11-09", estado="failed")
+    corridas = O.preparar_corridas(pd.DataFrame([fallida]), ZONA)
+    tareas = pd.DataFrame([
+        {"dag_id": "transformacion_silver_dag", "run_id": fallida["run_id"], "task_id": "limpiar_credit_risk", "state": "failed"},
+        {"dag_id": "transformacion_silver_dag", "run_id": fallida["run_id"], "task_id": "validar_calidad__2", "state": "upstream_failed"},
+    ])
+    slas = O.evaluar_slas(_entradas(corridas), config, AHORA)
+    alertas = O.alertas_activas(slas, corridas, pd.DataFrame(), AHORA, tareas=tareas)
+    mensaje = alertas[alertas["origen"] == "Corrida fallida"].iloc[0]["mensaje"]
+    assert "fallo en: limpiar_credit_risk" in mensaje and "validar_calidad" not in mensaje

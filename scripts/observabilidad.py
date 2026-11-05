@@ -58,7 +58,10 @@ def preparar_corridas(corridas: pd.DataFrame, zona: str) -> pd.DataFrame:
     datos = corridas.copy()
     for columna in ["logical_date", "start_date", "end_date"]:
         datos[columna] = pd.to_datetime(datos[columna], utc=True).dt.tz_convert(zona)
-    datos["duracion_min"] = (datos["end_date"] - datos["start_date"]).dt.total_seconds() / 60
+    duracion = (datos["end_date"] - datos["start_date"]).dt.total_seconds() / 60
+    # Una corrida re-ejecutada (Clear) actualiza start_date pero conserva el end_date viejo:
+    # esa diferencia sale negativa y no es una duracion real.
+    datos["duracion_min"] = duracion.where(duracion >= 0)
     datos["particion"] = datos["logical_date"].dt.normalize()  # dia que procesa (fecha logica)
     return datos
 
@@ -248,8 +251,16 @@ def fallas_abiertas(corridas: pd.DataFrame, ahora: pd.Timestamp, horas: int = 48
     return pd.DataFrame(abiertas)
 
 
+def tareas_fallidas(tareas: pd.DataFrame | None, dag_id: str, run_id: str) -> list[str]:
+    """Tareas que fallaron (no las que solo se saltaron por una falla anterior)."""
+    if tareas is None or tareas.empty or not {"dag_id", "run_id", "task_id", "state"} <= set(tareas.columns):
+        return []
+    del_run = tareas[(tareas["dag_id"] == dag_id) & (tareas["run_id"] == run_id) & (tareas["state"] == "failed")]
+    return sorted(del_run["task_id"].unique())
+
+
 def alertas_activas(slas: pd.DataFrame, corridas: pd.DataFrame, eventos: pd.DataFrame,
-                    ahora: pd.Timestamp, horas: int = 24) -> pd.DataFrame:
+                    ahora: pd.Timestamp, horas: int = 24, tareas: pd.DataFrame | None = None) -> pd.DataFrame:
     """Lista unica de alertas, de mas a menos grave."""
     filas = []
     for _, s in slas[slas["estado"] == ALERTA].iterrows():
@@ -257,8 +268,10 @@ def alertas_activas(slas: pd.DataFrame, corridas: pd.DataFrame, eventos: pd.Data
                       "mensaje": f"{_fmt(s['valor'], s['unidad'])} (meta {s['operador']} {_fmt(s['meta'], s['unidad'])})",
                       "desde": pd.NaT})
     for _, f in fallas_abiertas(corridas, ahora).iterrows():
+        fallaron = tareas_fallidas(tareas, f["dag_id"], f["run_id"])
+        donde = f"; fallo en: {', '.join(fallaron)}" if fallaron else ""
         filas.append({"severidad": "alta", "origen": "Corrida fallida", "elemento": f["dag_id"],
-                      "mensaje": f"Particion {f['particion']:%Y-%m-%d} sin corrida exitosa posterior",
+                      "mensaje": f"Particion {f['particion']:%Y-%m-%d} sin corrida exitosa posterior{donde}",
                       "desde": f["start_date"]})
     if eventos is not None and not eventos.empty and {"nivel", "timestamp"} <= set(eventos.columns):
         datos = eventos.copy()
