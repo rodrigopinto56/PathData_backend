@@ -92,6 +92,7 @@ default_args = argumentos_base(reintentos=3, timeout_min=30)
     start_date=pendulum.datetime(2026, 8, 1, tz="America/Mexico_City"),
     catchup=False,
     default_args=default_args,
+    max_active_runs=1,  # corridas re-ejecutadas van en fila, no todas a la vez
     tags=["bronze", "ingesta", "gemelo-digital-financiero"],
 )
 def ingesta_bronze_dag():

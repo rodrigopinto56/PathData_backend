@@ -9,6 +9,12 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+    # Limites de concurrencia (el proyecto corre en una laptop de 16 GB): con
+    # LocalExecutor las tareas corren DENTRO del scheduler, y sin limites varias
+    # corridas re-ejecutadas a la vez (Clear) agotaban la RAM y tumbaban Docker.
+    AIRFLOW__CORE__PARALLELISM: '4'                # tareas simultaneas en total
+    AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: '1'    # corridas de un DAG: en fila, no todas juntas
+    AIRFLOW__CORE__MAX_ACTIVE_TASKS_PER_DAG: '3'
     BRONZE_BACKEND: "minio"
     BRONZE_BUCKET: "bronze-layer"
     SILVER_BUCKET: "silver-layer"
@@ -122,6 +128,9 @@ services:
     user: "${AIRFLOW_UID:-50000}:0"
     environment:
       - SPARK_MODE=worker
+      # Limite del worker: sin esto toma todos los nucleos y memoria de la maquina
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
       - SPARK_MASTER_URL=spark://spark:7077
       - HOME=/tmp
     depends_on:

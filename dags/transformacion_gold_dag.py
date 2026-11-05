@@ -74,6 +74,7 @@ def registrar_evento(evento: dict) -> None:
     start_date=pendulum.datetime(2026, 9, 1, tz="America/Mexico_City"),
     catchup=False,
     default_args=default_args,
+    max_active_runs=1,  # corridas re-ejecutadas van en fila, no todas a la vez
     tags=["gold", "ml", "kpis", "gemelo-digital-financiero"],
 )
 def transformacion_gold_dag():
