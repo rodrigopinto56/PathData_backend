@@ -73,6 +73,7 @@ def _tope_datos() -> str:
     start_date=pendulum.datetime(2026, 10, 1, tz="America/Mexico_City"),
     catchup=False,
     default_args=default_args,
+    max_active_runs=1,  # corridas re-ejecutadas van en fila, no todas a la vez
     tags=["ml", "features", "modelo", "gemelo-digital-financiero"],
 )
 def entrenamiento_modelo_dag():

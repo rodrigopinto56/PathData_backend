@@ -71,6 +71,8 @@ def registrar_evento(evento: dict) -> None:
     start_date=pendulum.datetime(2026, 9, 1, tz="America/Mexico_City"),
     catchup=False,
     default_args=default_args,
+    max_active_runs=1,
+    max_active_tasks=2,  # maximo 2 limpiezas de Spark a la vez (cada una abre un JVM)
     tags=["silver", "pyspark", "gemelo-digital-financiero"],
 )
 def transformacion_silver_dag():
@@ -206,6 +208,10 @@ def transformacion_silver_dag():
             task_id=f"limpiar_{fuente}",
             application="/opt/spark-apps/bronze_to_silver.py",
             conn_id="spark_default",
+            # Recursos acotados: el driver corre dentro del contenedor del scheduler
+            driver_memory="512m",
+            executor_memory="1g",
+            total_executor_cores=1,
             application_args=[
                 "--fuente", fuente,
                 "--entrada", ruta_bronze_local,
