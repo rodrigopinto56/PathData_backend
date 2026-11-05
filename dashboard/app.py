@@ -319,6 +319,7 @@ def seccion_observabilidad() -> None:
                 resumen["ultima_corrida"] = resumen["ultima_corrida"].dt.strftime("%d/%m %H:%M")
                 st.dataframe(resumen.rename(columns={
                     "dag_id": "DAG", "corridas": "Corridas", "exitosas": "Exitosas", "fallidas": "Fallidas",
+                    "en_curso": "En curso / en fila",
                     "tasa_exito_pct": "% exito", "duracion_mediana_min": "Duracion tipica (min)",
                     "duracion_p95_min": "Duracion p95 (min)", "ultima_corrida": "Ultima", "ultimo_estado": "Estado"}),
                     hide_index=True, use_container_width=True)
@@ -338,11 +339,14 @@ def seccion_observabilidad() -> None:
             # Nombre de cada DAG como titulo horizontal arriba a la izquierda de su panel
             fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], font_color=TEXTO_SECUNDARIO,
                                                        x=0, xanchor="left"))
-            fig.update_yaxes(matches=None, title="", showticklabels=True)
+            # Escala logaritmica: una corrida que quedo a medias (laptop suspendida, ~800 min) no
+            # aplasta a las normales (~1-10 min); ambas se ven.
+            fig.update_yaxes(matches=None, title="", showticklabels=True, type="log")
             fig.update_xaxes(showticklabels=True)
             fig.update_layout(height=150 * exitosas["dag_id"].nunique() + 40, margin=dict(t=30, b=10, l=10, r=10))
             st.plotly_chart(_tema_oscuro(fig, mostrar_leyenda=False), use_container_width=True)
-            st.caption("Un panel por DAG, cada uno con su propia escala: lo que importa es si la duracion crece.")
+            st.caption("Un panel por DAG, en escala logaritmica (cada linea de la cuadricula es x10): lo que importa "
+                       "es si la duracion crece. Un pico aislado suele ser una corrida interrumpida (laptop suspendida).")
 
             sla_frescura = next(s for s in config["slas"] if s["metrica"] == "frescura_gold_pct")
             frescura = obs.frescura_por_dia(corridas, "transformacion_gold_dag", sla_frescura["hora_limite"],

@@ -84,6 +84,7 @@ def resumen_por_dag(corridas: pd.DataFrame) -> pd.DataFrame:
             "corridas": int(len(grupo)),
             "exitosas": int(len(exitosas)),
             "fallidas": int((terminadas["state"] == "failed").sum()),
+            "en_curso": int(len(grupo) - len(terminadas)),  # corriendo o en fila (max_active_runs=1)
             "tasa_exito_pct": round(len(exitosas) / len(terminadas) * 100, 1) if len(terminadas) else np.nan,
             "duracion_mediana_min": round(float(exitosas["duracion_min"].median()), 1) if len(exitosas) else np.nan,
             "duracion_p95_min": round(float(exitosas["duracion_min"].quantile(0.95)), 1) if len(exitosas) else np.nan,
