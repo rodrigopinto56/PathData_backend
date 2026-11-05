@@ -4,6 +4,8 @@ dashboard/app.py
 Semana 10: Dashboard de Calidad - Gemelo Digital Financiero.
 
 Estructura del archivo (de arriba a abajo):
+  0) Vista 0: Observabilidad        (Semana 18 - metricas operativas, SLA,
+                                     alertas; primera vista del tablero)
   1) Chequeo de configuracion       (Paso 2 - "hola mundo")
   2) Vista 1: Salud de la malla     (Paso 4)
   3) Vista 2: Calidad de datos      (Paso 5)
@@ -17,10 +19,17 @@ Cada vista es una funcion aparte para que crezcan sin pisarse entre si.
 """
 
 import os
+import sys
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+
+try:
+    import observabilidad as obs
+except ModuleNotFoundError:  # ejecucion local fuera del contenedor
+    sys.path.append(os.path.join(os.path.dirname(__file__), "..", "scripts"))
+    import observabilidad as obs
 
 from data_loader import (
     cargar_eventos_pipeline,
@@ -94,7 +103,7 @@ TITULOS_CATEGORIA_KPI = {
 
 st.set_page_config(page_title="Gemelo Digital Financiero - Dashboard", layout="wide")
 
-st.title("Dashboard de Calidad - Gemelo Digital Financiero")
+st.title("Dashboard técnico - Gemelo Digital Financiero")
 
 
 # --- Cache de datos ---
@@ -154,6 +163,252 @@ def _tema_oscuro(fig, mostrar_leyenda: bool = True):
     fig.update_xaxes(gridcolor=GRIDLINE, linecolor=BASELINE, zerolinecolor=BASELINE)
     fig.update_yaxes(gridcolor=GRIDLINE, linecolor=BASELINE, zerolinecolor=BASELINE)
     return fig
+
+
+# ---------------------------------------------------------------------------
+# 0) Vista 0: Observabilidad de la plataforma (Semana 18)
+# ---------------------------------------------------------------------------
+# Estado de un SLA / de la plataforma: paleta de status (icono + texto,
+# nunca solo color). Estado de una corrida de Airflow: tambien es status.
+ICONO_SLA = {obs.OK: "✓", obs.ALERTA: "!", obs.SIN_DATOS: "–"}
+COLOR_SLA = {obs.OK: "#0ca30c", obs.ALERTA: "#d03b3b", obs.SIN_DATOS: TEXTO_SECUNDARIO}
+TEXTO_SLA = {obs.OK: "Cumple", obs.ALERTA: "No cumple", obs.SIN_DATOS: "Sin datos"}
+COLOR_GENERAL = {"Saludable": "#0ca30c", "Requiere atención": "#e6a700", "Crítico": "#d03b3b",
+                 "Sin datos": TEXTO_SECUNDARIO}
+ICONO_GENERAL = {"Saludable": "✓", "Requiere atención": "!", "Crítico": "✕", "Sin datos": "–"}
+COLOR_CORRIDA = {"success": "#0ca30c", "failed": "#d03b3b", "running": COLOR_SERIE_PRINCIPAL,
+                 "queued": TEXTO_SECUNDARIO, "upstream_failed": "#e6a700"}
+NOMBRE_ESTADO_CORRIDA = {"success": "Exitosa", "failed": "Fallida", "running": "En curso", "queued": "En cola"}
+
+
+@st.cache_data(ttl=60)
+def _historial_modelos_obs() -> pd.DataFrame:
+    return cargar_historial_modelos()
+
+
+def _cargar_observabilidad() -> tuple[dict, dict, pd.Timestamp]:
+    """Junta las fuentes de la Vista 0 (sin cache: el estado debe ser el de ahora)."""
+    config = obs.cargar_config()
+    zona = config["zona_horaria"]
+    ahora = pd.Timestamp.now(tz=zona)
+    entradas = obs.cargar_entradas_locales()
+    entradas["corridas"] = obs.preparar_corridas(entradas["corridas"], zona)
+    entradas["calidad"] = _reportes_cacheados()
+    historial = _historial_modelos_obs()
+    entradas["modelo"] = {
+        "fecha_entrenamiento": historial["entrenado_en"].dropna().max() if not historial.empty else None,
+    }
+    return entradas, config, ahora
+
+
+def _tarjeta_sla(s: pd.Series) -> str:
+    color = COLOR_SLA[s["estado"]]
+    valor = obs._fmt(s["valor"], s["unidad"])
+    meta = f"meta {s['operador']} {obs._fmt(s['meta'], s['unidad'])}"
+    # Texto con el color del tema (claro u oscuro) y opacidad para lo secundario: un color fijo
+    # (blanco) desaparece si el navegador usa el tema claro.
+    nota = f"<br><span style='opacity:0.7;font-size:0.75rem'>{s['detalle']}</span>" if s["detalle"] else ""
+    return (
+        f"<div style='border:1px solid rgba(128,128,128,0.35);border-left:5px solid {color};border-radius:8px;"
+        f"padding:10px 12px;margin-bottom:10px;min-height:118px'>"
+        f"<div style='font-size:0.8rem;opacity:0.75'>{s['nombre']}</div>"
+        f"<div style='font-size:1.6rem;font-weight:600;font-variant-numeric:tabular-nums'>{valor}</div>"
+        f"<div style='font-size:0.8rem;opacity:0.75'>{meta}</div>"
+        f"<div style='font-size:0.8rem;color:{color};font-weight:600'>{ICONO_SLA[s['estado']]} {TEXTO_SLA[s['estado']]}</div>"
+        f"{nota}</div>"
+    )
+
+
+def seccion_observabilidad() -> None:
+    st.header("Vista 0 - Observabilidad de la plataforma")
+    try:
+        entradas, config, ahora = _cargar_observabilidad()
+    except FileNotFoundError as error:
+        st.error(f"No se encontro la configuracion de SLA: {error}")
+        return
+
+    exportacion = entradas.get("exportacion") or {}
+    if exportacion:
+        generado = pd.Timestamp(exportacion["generado_en"]).tz_convert(ahora.tz)
+        minutos = int((ahora - generado).total_seconds() // 60)
+        st.caption(
+            f"Metricas operativas, SLA ({config['ventana_dias']} dias) y alertas. Corridas de Airflow exportadas por "
+            f"monitoreo_dag el {generado:%d/%m %H:%M} (hace {minutos} min); el resto se lee en vivo."
+        )
+        if minutos > 120:
+            st.warning("La exportacion de Airflow tiene mas de 2 horas: revisa que monitoreo_dag este activo.")
+    else:
+        st.info(
+            "Todavia no hay metricas de Airflow. Activa **monitoreo_dag** en Airflow (corre cada hora) o "
+            "disparalo a mano; mientras tanto se muestran los SLA que no dependen de Airflow."
+        )
+
+    corridas = entradas["corridas"]
+    slas = obs.evaluar_slas(entradas, config, ahora)
+    alertas = obs.alertas_activas(slas, corridas, entradas["eventos"], ahora)
+    general = obs.estado_general(slas, alertas)
+
+    # --- Resumen en una linea ---
+    monitoreadas = corridas[corridas["dag_id"].isin(config["dags_monitoreados"])] if not corridas.empty else corridas
+    recientes = obs.en_ventana(monitoreadas, ahora, config["ventana_dias"]) if not monitoreadas.empty else monitoreadas
+    c1, c2, c3, c4 = st.columns(4)
+    c1.markdown(
+        f"<div style='font-size:0.85rem;opacity:0.75'>Estado de la plataforma</div>"
+        f"<div style='font-size:1.6rem;font-weight:700;color:{COLOR_GENERAL[general]}'>"
+        f"{ICONO_GENERAL[general]} {general}</div>", unsafe_allow_html=True)
+    con_datos = slas[slas["estado"] != obs.SIN_DATOS]
+    c2.metric("SLA cumplidos", f"{int((slas['estado'] == obs.OK).sum())} de {len(con_datos)}",
+              help="Solo cuentan los SLA con datos suficientes.")
+    c3.metric("Alertas abiertas", len(alertas))
+    c4.metric(f"Corridas ({config['ventana_dias']} dias)", len(recientes))
+
+    # --- SLA ---
+    st.subheader("Acuerdos de nivel de servicio (SLA)")
+    for inicio in range(0, len(slas), 4):
+        columnas = st.columns(4)
+        for columna, (_, s) in zip(columnas, slas.iloc[inicio:inicio + 4].iterrows()):
+            columna.markdown(_tarjeta_sla(s), unsafe_allow_html=True)
+    with st.expander("¿Como se mide cada SLA?"):
+        st.dataframe(slas[["nombre", "descripcion", "operador", "meta", "unidad", "severidad"]]
+                     .rename(columns={"nombre": "SLA", "descripcion": "Como se mide", "operador": "Regla",
+                                      "meta": "Meta", "unidad": "Unidad", "severidad": "Severidad"}),
+                     hide_index=True, use_container_width=True)
+        st.caption("Configuracion: config/slas.yml. Los mismos calculos los hace monitoreo_dag, que registra "
+                   "un evento en el log cuando un SLA cambia de estado.")
+
+    # --- Alertas ---
+    st.subheader("Alertas abiertas")
+    if alertas.empty:
+        st.success("Sin alertas: todos los SLA con datos se cumplen y no hay corridas ni tareas fallidas sin resolver.")
+    else:
+        vista = alertas.copy()
+        vista["severidad"] = vista["severidad"].map({"alta": "! Alta", "media": "· Media"}).fillna(vista["severidad"])
+        vista["desde"] = vista["desde"].apply(lambda t: "" if pd.isna(t) else f"{t:%d/%m %H:%M}")
+        st.dataframe(vista.rename(columns={"severidad": "Severidad", "origen": "Origen", "elemento": "Elemento",
+                                           "mensaje": "Detalle", "desde": "Desde"}),
+                     hide_index=True, use_container_width=True)
+
+    tab_corridas, tab_tendencias, tab_datos, tab_asistente = st.tabs(
+        ["Corridas", "Tendencias", "Calidad y modelo", "Asistente IA"])
+
+    with tab_corridas:
+        if corridas.empty:
+            st.info("Sin corridas exportadas todavia.")
+        else:
+            ultimas = corridas[corridas["start_date"] >= ahora - pd.Timedelta(days=3)].copy()
+            ultimas["fin"] = ultimas["end_date"].fillna(ahora)
+            ultimas["Estado"] = ultimas["state"].map(NOMBRE_ESTADO_CORRIDA).fillna(ultimas["state"])
+            if not ultimas.empty:
+                fig = px.timeline(
+                    ultimas, x_start="start_date", x_end="fin", y="dag_id", color="state",
+                    color_discrete_map=COLOR_CORRIDA,
+                    hover_data={"run_id": True, "Estado": True, "duracion_min": ":.1f", "state": False,
+                                "start_date": "|%d/%m %H:%M", "fin": "|%d/%m %H:%M", "dag_id": False},
+                    labels={"dag_id": "", "duracion_min": "Duracion (min)", "start_date": "Inicio", "fin": "Fin"},
+                )
+                fig.for_each_trace(lambda t: t.update(name=NOMBRE_ESTADO_CORRIDA.get(t.name, t.name)))
+                fig.update_yaxes(categoryorder="array", categoryarray=list(reversed(config["dags_monitoreados"])))
+                fig.update_layout(height=280, legend=dict(orientation="h", y=1.12, x=0))
+                st.plotly_chart(_tema_oscuro(fig), use_container_width=True)
+                st.caption("Ultimos 3 dias. Cada barra es una corrida: de cuando empezo a cuando termino.")
+            resumen = obs.resumen_por_dag(obs.en_ventana(corridas, ahora, config["ventana_dias"]))
+            if not resumen.empty:
+                resumen["ultima_corrida"] = resumen["ultima_corrida"].dt.strftime("%d/%m %H:%M")
+                st.dataframe(resumen.rename(columns={
+                    "dag_id": "DAG", "corridas": "Corridas", "exitosas": "Exitosas", "fallidas": "Fallidas",
+                    "tasa_exito_pct": "% exito", "duracion_mediana_min": "Duracion tipica (min)",
+                    "duracion_p95_min": "Duracion p95 (min)", "ultima_corrida": "Ultima", "ultimo_estado": "Estado"}),
+                    hide_index=True, use_container_width=True)
+
+    with tab_tendencias:
+        exitosas = corridas[(corridas["state"] == "success") & corridas["dag_id"].isin(config["dags_monitoreados"])] \
+            if not corridas.empty else corridas
+        if exitosas.empty:
+            st.info("Sin corridas exitosas para graficar.")
+        else:
+            st.markdown("**Duracion de las corridas exitosas (minutos)**")
+            fig = px.line(exitosas.sort_values("start_date"), x="start_date", y="duracion_min",
+                          facet_col="dag_id", facet_col_wrap=1, facet_row_spacing=0.12, markers=True,
+                          labels={"start_date": "", "duracion_min": "min"},
+                          category_orders={"dag_id": config["dags_monitoreados"]})
+            fig.update_traces(line=dict(color=COLOR_SERIE_PRINCIPAL, width=2), marker=dict(size=7))
+            # Nombre de cada DAG como titulo horizontal arriba a la izquierda de su panel
+            fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1], font_color=TEXTO_SECUNDARIO,
+                                                       x=0, xanchor="left"))
+            fig.update_yaxes(matches=None, title="", showticklabels=True)
+            fig.update_xaxes(showticklabels=True)
+            fig.update_layout(height=150 * exitosas["dag_id"].nunique() + 40, margin=dict(t=30, b=10, l=10, r=10))
+            st.plotly_chart(_tema_oscuro(fig, mostrar_leyenda=False), use_container_width=True)
+            st.caption("Un panel por DAG, cada uno con su propia escala: lo que importa es si la duracion crece.")
+
+            sla_frescura = next(s for s in config["slas"] if s["metrica"] == "frescura_gold_pct")
+            frescura = obs.frescura_por_dia(corridas, "transformacion_gold_dag", sla_frescura["hora_limite"],
+                                            ahora, config["historial_dias"])
+            if not frescura.empty:
+                st.markdown(f"**Frescura: ¿Gold listo antes de las {sla_frescura['hora_limite']} del dia siguiente?**")
+                tabla = pd.DataFrame({
+                    "Particion": frescura["particion"].dt.strftime("%Y-%m-%d"),
+                    "Listo": frescura["listo_en"].apply(lambda t: "No corrio" if pd.isna(t) else f"{t:%d/%m %H:%M}"),
+                    "Limite": frescura["limite"].dt.strftime("%d/%m %H:%M"),
+                    "A tiempo": frescura["a_tiempo"].map({True: "✓ Si", False: "✕ No"}),
+                    "Retraso (min)": [("" if a else f"{r:,.0f}") for a, r in zip(frescura["a_tiempo"], frescura["retraso_min"].fillna(0))],
+                }).iloc[::-1]
+                st.dataframe(tabla, hide_index=True, use_container_width=True, height=260)
+
+    with tab_datos:
+        calidad = entradas["calidad"]
+        if calidad is None or calidad.empty:
+            st.info("Sin reportes de calidad de Silver.")
+        else:
+            ultimos = calidad.sort_values("fecha").groupby("fuente").tail(1)
+            fig = px.bar(ultimos.sort_values("porcentaje_calidad"), x="porcentaje_calidad", y="fuente",
+                         orientation="h", text="porcentaje_calidad",
+                         labels={"porcentaje_calidad": "% de reglas cumplidas", "fuente": ""})
+            fig.update_traces(marker_color=COLOR_SERIE_PRINCIPAL, texttemplate="%{text:.1f}%", textposition="outside")
+            sla_calidad = next(s for s in config["slas"] if s["metrica"] == "calidad_silver_min_pct")
+            fig.add_vline(x=sla_calidad["meta"], line_dash="dot", line_color=TEXTO_SECUNDARIO,
+                          annotation_text=f"Meta {sla_calidad['meta']}%", annotation_font_color=TEXTO_SECUNDARIO)
+            fig.update_layout(height=60 * len(ultimos) + 80, xaxis_range=[0, 105])
+            st.markdown("**Calidad de Silver: ultimo reporte de cada fuente**")
+            st.plotly_chart(_tema_oscuro(fig, mostrar_leyenda=False), use_container_width=True)
+        historial = _historial_modelos_obs()
+        if not historial.empty:
+            ultimo = historial.iloc[0]
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Ultimo entrenamiento", str(ultimo["entrenado_en"])[:16].replace("T", " "))
+            m2.metric("Versiones entrenadas", len(historial))
+            m3.metric("AUC de la ultima version", f"{ultimo['auc']:.3f}" if pd.notna(ultimo["auc"]) else "N/D")
+
+    with tab_asistente:
+        metricas = obs.metricas_asistente(entradas["asistente_log"], ahora, config["ventana_dias"])
+        evaluacion = entradas["evaluacion"]
+        if metricas["preguntas"] == 0 and not evaluacion:
+            st.info("Todavia no hay preguntas registradas ni evaluaciones del asistente.")
+        if metricas["preguntas"]:
+            a1, a2, a3, a4 = st.columns(4)
+            a1.metric(f"Preguntas ({config['ventana_dias']} dias)", metricas["preguntas"])
+            a2.metric("Redactadas por la IA", f"{metricas['pct_ia']:.0f}%",
+                      help=f"Respaldo (datos exactos): {metricas['pct_respaldo']:.0f}% · Modo basico: {metricas['pct_basico']:.0f}%")
+            a3.metric("Tiempo tipico", f"{metricas['segundos_mediana']:.0f} s")
+            a4.metric("Tiempo p95", f"{metricas['segundos_p95']:.0f} s")
+        if evaluacion:
+            st.markdown(
+                f"**Ultima evaluacion automatica** ({evaluacion.get('modelo', '')}, "
+                f"{str(evaluacion.get('evaluado_en', ''))[:16].replace('T', ' ')}): "
+                f"exito final **{evaluacion.get('exito_final_pct')}%**, veracidad final "
+                f"**{evaluacion.get('veracidad_final_pct')}%**, {evaluacion.get('preguntas')} preguntas "
+                f"(meta {evaluacion.get('meta_pct', 84)}%)."
+            )
+        log = entradas["asistente_log"]
+        if not log.empty:
+            log = log.assign(_t=pd.to_datetime(log["timestamp"], utc=True, format="ISO8601"))
+            recientes_log = log.sort_values("_t", ascending=False).head(10)
+            columnas = [c for c in ["timestamp", "pregunta", "modo", "segundos", "reintentos"] if c in recientes_log.columns]
+            st.markdown("**Ultimas preguntas**")
+            st.dataframe(recientes_log[columnas].assign(
+                timestamp=pd.to_datetime(recientes_log["timestamp"], utc=True, format="ISO8601")
+                .dt.tz_convert(ahora.tz).dt.strftime("%d/%m %H:%M")),
+                hide_index=True, use_container_width=True)
 
 
 # ---------------------------------------------------------------------------
@@ -899,6 +1154,8 @@ def seccion_modelo_ia() -> None:
 # Layout general
 # ---------------------------------------------------------------------------
 seccion_chequeo_configuracion()
+seccion_observabilidad()
+st.divider()
 seccion_resumen_ejecutivo()
 st.divider()
 seccion_salud_malla()

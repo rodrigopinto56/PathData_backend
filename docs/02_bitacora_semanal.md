@@ -340,3 +340,38 @@ Aparecieron al correr la malla con datos reales: el entrenamiento semanal salía
 - la evaluación automática (`scripts/evaluar_asistente.py`, 30 preguntas, meta ≥ 84%).
 
 **Evidencia:** prueba de punta a punta con datos sintéticos (pipeline → Gold → tablero → chat) en modo básico y contra un servidor que imita la API de Ollama. La redacción con el modelo real se valida en la máquina del equipo, porque en el entorno de desarrollo la descarga de modelos estaba bloqueada.
+
+## Semana 18 — Observabilidad y hardening
+
+**Objetivo del plan:** métricas operativas, SLA y alertas, con un dashboard de monitoreo; presentar la solución a audiencias técnicas y de negocio.
+
+**Qué se hizo**
+- **Vista 0 — Observabilidad de la plataforma**, la primera del dashboard técnico. Muestra:
+  - estado general y 8 SLA con valor, meta y estado;
+  - alertas abiertas;
+  - línea de tiempo de corridas;
+  - tendencias de duración y frescura;
+  - calidad, modelo y uso del asistente.
+- **`config/slas.yml` + `scripts/observabilidad.py`:** los SLA son configuración. El mismo código los evalúa en el DAG y en el dashboard.
+- **`dags/monitoreo_dag.py` (cada hora):** exporta corridas y tareas de la base de Airflow y registra un evento solo cuando un SLA cambia de estado.
+- **Asistente:** cada pregunta queda registrada (modo, tiempo, reintentos) y la evaluación automática guarda su resumen para el SLA de exactitud.
+- **Hardening:**
+  - timeouts y aviso de falla comunes en los 5 DAGs;
+  - healthchecks en todos los servicios;
+  - credenciales de MinIO en `.env`;
+  - `bronzeAudit` versionado y con listado paginado.
+- **Pruebas:** 13 nuevas (116 en total).
+- **Documentación:** [11 — Observabilidad y hardening](11_observabilidad.md), con guiones para audiencia técnica y de negocio.
+
+**Decisiones técnicas**
+- **Alertas solo en el dashboard** (decisión del proyecto): no hace falta configurar correo ni webhooks; agregarlos es un cambio pequeño.
+- **El DAG exporta y el dashboard calcula:** el dashboard no tiene acceso a la base de Airflow, pero todo lo demás se lee en vivo.
+- **Sin datos ≠ falla:** un SLA sin datos suficientes, por ejemplo menos de 5 preguntas al asistente, no genera alerta.
+- **Sin ruido:** el log recibe un evento por cambio de estado, no uno por hora.
+
+**Evidencia:** `monitoreo_dag` se probó contra una base real de Airflow 2.9.3, con corridas exitosas y una fallida:
+- exportó las corridas y calculó bien el éxito (83.3%) y la frescura (66.7%);
+- registró 3 alertas;
+- en la segunda corrida, sin cambios, no repitió ninguna.
+
+La Vista 0 se revisó en el navegador con datos de prueba, sin errores.

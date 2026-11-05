@@ -60,10 +60,10 @@
 
 | Prioridad | Tema | Detalle | Acción sugerida |
 |---|---|---|---|
-| Alta | **`bronzeAudit` fuera de Git** | `ingestionBronzeLayer.py` importa `bronzeAudit.audit_bronze_layer`, que vive en `plugins/` (ignorada por `.gitignore`). Un clon nuevo del repo no puede cargar el DAG. | Mover el módulo a `scripts/` (o quitar `plugins/*` del `.gitignore`) y versionarlo. |
-| Alta | **Credenciales en texto plano** | `admin/password123` en `docker-compose.yml` y como valores por defecto en scripts | Usar un archivo `.env` (ya ignorado) y Airflow Connections/Secrets. |
+| ~~Alta~~ | ~~**`bronzeAudit` fuera de Git**~~ | **Resuelto en S18:** versionado en `scripts/bronzeAudit.py`, con listado paginado | — |
+| Media | **Credenciales en texto plano (parcial)** | **S18:** las de MinIO ya están en `.env`. Quedan la de Postgres y la del usuario `airflow` en el compose, y valores por defecto en los scripts | Moverlas también a `.env`; en producción, un gestor de secretos |
 | Media | Conexiones de Airflow y buckets creados a mano | Pasos manuales para levantar el entorno | Crear conexiones con variables `AIRFLOW_CONN_*` y buckets con un servicio `minio-init`. |
-| Media | Código duplicado entre DAGs | `registrar_evento` y la configuración de MinIO se repiten en varios archivos | Extraer un módulo común (p. ej. `scripts/comun.py`). |
+| Media | Código duplicado entre DAGs | `registrar_evento` y la configuración de MinIO se repiten en varios archivos (S18 ya centralizó timeouts, reintentos y aviso de falla en `dags/comun_dags.py`) | Mover también `registrar_evento` a `comun_dags.py` |
 | Media | `data/validar_conteos_silver.py` | Copia suelta en `data/`, fuera del flujo | Eliminarla o moverla a `scripts/`. |
 | Baja | Fechas de prueba fijas en `validar_calidad_silver.py` | `FECHAS_PRUEBA = ["2026/09/01", "2026/09/02"]` en modo CLI | Recibir la fecha como argumento. |
 | Baja | Pruebas solo para Gold e IA | Silver y la ingesta no tienen pruebas unitarias (los limpiadores nuevos de S14 se probaron con Spark local, pero no hay prueba automática) | Agregar pruebas de los limpiadores de Spark con datos sintéticos. |

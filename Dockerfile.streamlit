@@ -22,6 +22,9 @@ COPY config/simulador.yml /app/
 # Semana 17: asistente financiero (IA local con Ollama)
 COPY scripts/asistente_financiero.py /app/
 COPY scripts/evaluar_asistente.py /app/
+# Semana 18: observabilidad (SLA y alertas de la Vista 0; registro del asistente)
+COPY scripts/observabilidad.py /app/
+COPY config/slas.yml /app/
 
 EXPOSE 8501
 

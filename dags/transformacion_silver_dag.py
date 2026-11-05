@@ -27,6 +27,8 @@ from airflow.operators.python import get_current_context
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
+from comun_dags import argumentos_base  # dags/comun_dags.py
+
 sys.path.append("/opt/airflow/scripts")
 from espera_dags import esperar_dag  # dags/espera_dags.py
 from validar_calidad_silver import validar_particion
@@ -45,11 +47,8 @@ FUENTES = ["loan_default_risk", "personal_finance_ml", "credit_risk", "transacci
 # marca "skipped" en vez de fallar (ver ingesta_bronze_dag).
 FUENTES_OPCIONALES = {"credit_risk", "transacciones_cliente_demo"}
 
-default_args = {
-    "owner": "data-engineering",
-    "retries": 2,
-    "retry_delay": pendulum.duration(minutes=5),
-}
+# Semana 18: reintentos, limite de tiempo por tarea y aviso de falla comunes (dags/comun_dags.py)
+default_args = argumentos_base(reintentos=2, timeout_min=60)
 
 
 def registrar_evento(evento: dict) -> None:

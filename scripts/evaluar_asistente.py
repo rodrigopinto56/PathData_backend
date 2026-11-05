@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from dataclasses import dataclass
 from typing import Callable
@@ -34,6 +35,8 @@ import asistente_financiero as asis
 import reporte_ejecutivo as rep
 
 META_PCT = 84.0
+# En el contenedor del dashboard ejecutivo: /app/data/reports (volumen ./data)
+CARPETA_REPORTES = os.getenv("CARPETA_REPORTES", ".")
 
 
 @dataclass
@@ -228,7 +231,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Evalua el asistente financiero contra un banco de preguntas.")
     parser.add_argument("--fecha", help="Particion Gold AAAA/MM/DD (por defecto la mas reciente)")
     parser.add_argument("--modelo", default=asis.OLLAMA_MODEL)
-    parser.add_argument("--salida", default="evaluacion_asistente.csv")
+    parser.add_argument("--salida", default=os.path.join(CARPETA_REPORTES, "evaluacion_asistente.csv"))
     args = parser.parse_args()
 
     disponible, detalle = asis.ollama_disponible(modelo=args.modelo)
@@ -237,7 +240,12 @@ def main() -> None:
     datos = cargar_datos(args.fecha)
     print(f"Evaluando {args.modelo} con la fecha {datos.fecha}... (puede tardar unos minutos)")
     tabla, resumen = evaluar(datos, asis.crear_llm(args.modelo))
+    os.makedirs(os.path.dirname(os.path.abspath(args.salida)), exist_ok=True)
     tabla.to_csv(args.salida, index=False)
+    # Semana 18: el resumen queda para la Vista 0 (SLA "Exactitud del asistente")
+    with open(os.path.join(os.path.dirname(os.path.abspath(args.salida)), "evaluacion_asistente.json"), "w") as f:
+        json.dump({**resumen, "modelo": args.modelo, "fecha_datos": datos.fecha,
+                   "evaluado_en": pd.Timestamp.now(tz="America/Mexico_City").isoformat()}, f, indent=2, ensure_ascii=False)
 
     pd.set_option("display.width", 200, "display.max_colwidth", 60)
     print(tabla[["pregunta", "enrutamiento_ok", "modo", "ia_a_la_primera", "exito_final", "segundos"]].to_string(index=False))

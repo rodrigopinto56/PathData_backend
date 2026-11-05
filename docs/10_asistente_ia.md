@@ -120,14 +120,14 @@ Qué esperar:
 
 ### Resultados medidos (`llama3.2:3b`, CPU, fecha 2026/10/28)
 
-| Métrica | 1ª medición | Meta |
-|---|---|---|
-| Enrutamiento | 100% | ≥ 84% |
-| Veracidad de la IA al primer intento | 86.7% | ≥ 84% |
-| Veracidad final (lo que ve el usuario) | 100% | ≥ 84% |
-| Éxito de la IA | 76.7% | — |
-| Éxito final | 80.0% | ≥ 84% |
-| Tiempo promedio por respuesta | 21.8 s | — |
+| Métrica | 1ª medición | 2ª medición (tras ajustes) | Meta |
+|---|---|---|---|
+| Enrutamiento | 100% | 100% | ≥ 84% |
+| Veracidad de la IA al primer intento | 86.7% | 93.3% | ≥ 84% |
+| Veracidad final (lo que ve el usuario) | 100% | 100% | ≥ 84% |
+| Éxito de la IA | 76.7% | 83.3% | — |
+| Éxito final | 80.0% | **86.7%** ✅ | ≥ 84% |
+| Tiempo promedio por respuesta | 21.8 s | 21.8 s | — |
 
 Fallas encontradas y ajustes:
 - **Leer una tabla y elegir el máximo** (región con más riesgo): ahora cada consulta trae un **"Dato principal"** ya calculado por código.
@@ -136,7 +136,7 @@ Fallas encontradas y ajustes:
   - "no cumple la meta" sin cifra;
   - el pronóstico del gasto en lugar del ingreso.
 
-Después de estos ajustes hay que volver a medir.
+Con los ajustes, la 2ª medición **cumple la meta**. Siguen fallando 4 preguntas: región o zona con más riesgo, "¿se cumple la meta de ahorro?" y el pronóstico del cliente demo. Son las candidatas para la siguiente mejora, o para probar `llama3.1:8b`.
 
 ## 7. Limitaciones
 

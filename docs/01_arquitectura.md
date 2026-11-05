@@ -171,6 +171,12 @@ flowchart LR
 `esperar_silver` (y `esperar_bronze` en Silver) es un sensor que espera a que el DAG anterior termine con
 éxito el mismo día (`dags/espera_dags.py`).
 
+### 4.3b `monitoreo_dag` — observabilidad (S18, cada hora)
+
+`exportar_metricas` copia de la base de Airflow las corridas y tareas de 30 días a `data/reports/observabilidad/`.
+`evaluar_slas` evalúa `config/slas.yml` y registra un evento solo cuando un SLA cambia de estado. Todos los DAGs
+comparten timeouts, reintentos y aviso de falla (`dags/comun_dags.py`). Ver [11](11_observabilidad.md).
+
 ### 4.4 `entrenamiento_modelo_dag` — features y modelo (S14–S15, semanal)
 
 ```mermaid
