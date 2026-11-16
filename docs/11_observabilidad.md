@@ -44,6 +44,7 @@ flowchart LR
 | Asistente responde con IA | Respuestas redactadas por la IA que pasaron el control de calidad (mín. 5 preguntas) | ≥ 84% | Media |
 | Tiempo de respuesta del asistente | Percentil 95 (mín. 5 preguntas) | ≤ 60 s | Media |
 | Exactitud del asistente | Éxito final en la última evaluación automática | ≥ 84% | Media |
+| Exactitud del asesor del cliente (S19) | Éxito final en la última evaluación del asesor (`evaluar_asesor.py`) | ≥ 84% | Media |
 
 **Estado de la plataforma:**
 - **Crítico:** hay al menos una alerta de severidad alta.
@@ -103,7 +104,7 @@ Un SLA sin datos suficientes queda en **Sin datos**, nunca como falla.
 ### Para una audiencia de negocio (~1 min)
 
 "Antes, si algo fallaba en el proceso de datos, nos enterábamos cuando un ejecutivo veía números viejos. Ahora el sistema se vigila solo.
-- Prometemos ocho compromisos de servicio. Por ejemplo, que la información del día esté lista antes de las 7 de la mañana, que al menos 95 de cada 100 procesos terminen bien y que el asistente de IA responda correctamente al menos 84% de las veces.
+- Prometemos nueve compromisos de servicio. Por ejemplo, que la información del día esté lista antes de las 7 de la mañana, que al menos 95 de cada 100 procesos terminen bien y que el asistente de IA responda correctamente al menos 84% de las veces.
 - Una sola pantalla dice si la plataforma está saludable, requiere atención o está en estado crítico, qué compromiso no se cumple y desde cuándo.
 - Así el equipo de datos corrige antes de que el negocio lo note, y el negocio puede confiar en que los números que ve son los de hoy."
 

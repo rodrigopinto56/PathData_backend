@@ -25,6 +25,9 @@ COPY scripts/evaluar_asistente.py /app/
 # Semana 18: observabilidad (SLA y alertas de la Vista 0; registro del asistente)
 COPY scripts/observabilidad.py /app/
 COPY config/slas.yml /app/
+# Semana 19: asesor financiero del portal del cliente
+COPY scripts/asesor_cliente.py /app/
+COPY scripts/evaluar_asesor.py /app/
 
 EXPOSE 8501
 

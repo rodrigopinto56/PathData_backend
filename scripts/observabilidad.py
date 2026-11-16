@@ -13,6 +13,8 @@ Fuentes (todas ya existen; aqui solo se combinan):
   - modelo: campeon.json + model_card.json del registro de modelos
   - asistente: data/reports/asistente_log.jsonl (una linea por pregunta) y
     data/reports/evaluacion_asistente.json (ultima evaluacion)
+  - asesor del cliente (S19): mismo log con canal "cliente" y
+    data/reports/evaluacion_asesor.json
 
 Funciones puras sobre DataFrames/dicts: las usan el dashboard tecnico
 (Vista 0, siempre fresco) y monitoreo_dag (registra cambios de estado). La
@@ -143,11 +145,18 @@ def metricas_asistente(log: pd.DataFrame, ahora: pd.Timestamp, dias: int) -> dic
     datos = log.copy()
     datos["timestamp"] = pd.to_datetime(datos["timestamp"], utc=True, format="ISO8601").dt.tz_convert(ahora.tz)
     datos = datos[datos["timestamp"] >= ahora - pd.Timedelta(days=dias)]
+    # Semana 19: las preguntas que el asesor del cliente deriva a una persona
+    # (fraude, privacidad) no pasan por la IA a proposito: no cuentan para el SLA.
+    derivadas = int((datos["modo"] == "derivado").sum())
+    datos = datos[datos["modo"] != "derivado"]
     if datos.empty:
-        return {"preguntas": 0}
+        return {"preguntas": 0, "derivadas": derivadas}
     modos = datos["modo"].value_counts(normalize=True) * 100
+    canal = datos["canal"].fillna("ejecutivo") if "canal" in datos else pd.Series("ejecutivo", index=datos.index)
     return {
         "preguntas": int(len(datos)),
+        "derivadas": derivadas,
+        "por_canal": {k: int(v) for k, v in canal.value_counts().items()},
         "pct_ia": round(float(modos.get("ia", 0.0)), 1),
         "pct_respaldo": round(float(modos.get("respaldo", 0.0)), 1),
         "pct_basico": round(float(modos.get("basico", 0.0)), 1),
@@ -204,6 +213,8 @@ def calcular_metricas(entradas: dict, config: dict, ahora: pd.Timestamp) -> dict
 
     evaluacion = entradas.get("evaluacion") or {}
     metricas["evaluacion_exito_final_pct"] = evaluacion.get("exito_final_pct")
+    # Semana 19: evaluacion del asesor del cliente (scripts/evaluar_asesor.py)
+    metricas["evaluacion_asesor_exito_final_pct"] = (entradas.get("evaluacion_asesor") or {}).get("exito_final_pct")
     return metricas
 
 
@@ -340,13 +351,16 @@ def cargar_entradas_locales(base: str | None = None) -> dict:
     entradas["asistente_log"] = cargar_jsonl(os.path.join(base, "asistente_log.jsonl"))
     ruta_eval = os.path.join(base, "evaluacion_asistente.json")
     entradas["evaluacion"] = json.load(open(ruta_eval)) if os.path.exists(ruta_eval) else {}
+    ruta_eval_asesor = os.path.join(base, "evaluacion_asesor.json")
+    entradas["evaluacion_asesor"] = json.load(open(ruta_eval_asesor)) if os.path.exists(ruta_eval_asesor) else {}
     ruta_meta = os.path.join(carpeta(base), "exportacion.json")
     entradas["exportacion"] = json.load(open(ruta_meta)) if os.path.exists(ruta_meta) else {}
     return entradas
 
 
 def registrar_pregunta(registro: dict, base: str | None = None) -> None:
-    """Una linea por pregunta al asistente (la escribe el dashboard ejecutivo).
+    """Una linea por pregunta al asistente ejecutivo o al asesor del cliente
+    (campo "canal"; las lineas sin canal son del ejecutivo).
     Nunca debe romper el tablero: cualquier error de disco se ignora."""
     try:
         ruta = os.path.join(base or CARPETA_REPORTES, "asistente_log.jsonl")

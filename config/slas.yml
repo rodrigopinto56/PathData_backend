@@ -94,3 +94,13 @@ slas:
     meta: 84
     unidad: "%"
     severidad: media
+
+  # Semana 19: asesor financiero del portal del cliente
+  - id: asesor_evaluacion
+    nombre: Exactitud del asesor del cliente
+    descripcion: "Exito final en la ultima evaluacion automatica del asesor (banco de 30 preguntas de clientes)"
+    metrica: evaluacion_asesor_exito_final_pct
+    operador: ">="
+    meta: 84
+    unidad: "%"
+    severidad: media

@@ -300,10 +300,14 @@ def cargar_clientes_particion(fecha: str) -> pd.DataFrame:
     except FileNotFoundError:
         return pd.DataFrame()
 
-    columnas_cliente = [c for c in ["user_id", "age", "employment_status"] if c in clientes.columns]
+    columnas_cliente = [c for c in ["user_id", "age", "rango_edad", "employment_status"] if c in clientes.columns]
     detalle = fact.merge(regiones, on="region_id", how="left").merge(
         clientes[columnas_cliente], on="user_id", how="left"
     )
+    # Semana 19: el portal del cliente muestra el tipo de su prestamo
+    tipos = cargar_tabla_particion("dim_tipo_prestamo", fecha)
+    if not tipos.empty and "tipo_prestamo_id" in detalle.columns:
+        detalle = detalle.merge(tipos, on="tipo_prestamo_id", how="left")
     # Semana 15: razones y puntaje del modelo (estan en gold_clientes_riesgo)
     riesgo = cargar_tabla_particion("gold_clientes_riesgo", fecha)
     extras = [c for c in ["razones_riesgo", "puntaje_riesgo", "grado_credito_proxy"] if c in riesgo.columns]

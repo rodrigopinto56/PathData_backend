@@ -389,11 +389,15 @@ def seccion_observabilidad() -> None:
     with tab_asistente:
         metricas = obs.metricas_asistente(entradas["asistente_log"], ahora, config["ventana_dias"])
         evaluacion = entradas["evaluacion"]
-        if metricas["preguntas"] == 0 and not evaluacion:
+        evaluacion_asesor = entradas.get("evaluacion_asesor") or {}
+        if metricas["preguntas"] == 0 and not evaluacion and not evaluacion_asesor:
             st.info("Todavia no hay preguntas registradas ni evaluaciones del asistente.")
         if metricas["preguntas"]:
+            canales = metricas.get("por_canal", {})
             a1, a2, a3, a4 = st.columns(4)
-            a1.metric(f"Preguntas ({config['ventana_dias']} dias)", metricas["preguntas"])
+            a1.metric(f"Preguntas ({config['ventana_dias']} dias)", metricas["preguntas"],
+                      help=f"Ejecutivos: {canales.get('ejecutivo', 0)} · Clientes (asesor): {canales.get('cliente', 0)} · "
+                           f"Derivadas a una persona (fraude, privacidad): {metricas.get('derivadas', 0)}")
             a2.metric("Redactadas por la IA", f"{metricas['pct_ia']:.0f}%",
                       help=f"Respaldo (datos exactos): {metricas['pct_respaldo']:.0f}% · Modo basico: {metricas['pct_basico']:.0f}%")
             a3.metric("Tiempo tipico", f"{metricas['segundos_mediana']:.0f} s")
@@ -406,11 +410,19 @@ def seccion_observabilidad() -> None:
                 f"**{evaluacion.get('veracidad_final_pct')}%**, {evaluacion.get('preguntas')} preguntas "
                 f"(meta {evaluacion.get('meta_pct', 84)}%)."
             )
+        if evaluacion_asesor:
+            st.markdown(
+                f"**Ultima evaluacion del asesor del cliente** ({evaluacion_asesor.get('modelo', '')}, "
+                f"{str(evaluacion_asesor.get('evaluado_en', ''))[:16].replace('T', ' ')}): "
+                f"exito final **{evaluacion_asesor.get('exito_final_pct')}%**, veracidad final "
+                f"**{evaluacion_asesor.get('veracidad_final_pct')}%**, {evaluacion_asesor.get('preguntas')} preguntas "
+                f"(meta {evaluacion_asesor.get('meta_pct', 84)}%)."
+            )
         log = entradas["asistente_log"]
         if not log.empty:
             log = log.assign(_t=pd.to_datetime(log["timestamp"], utc=True, format="ISO8601"))
             recientes_log = log.sort_values("_t", ascending=False).head(10)
-            columnas = [c for c in ["timestamp", "pregunta", "modo", "segundos", "reintentos"] if c in recientes_log.columns]
+            columnas = [c for c in ["timestamp", "canal", "pregunta", "modo", "segundos", "reintentos"] if c in recientes_log.columns]
             st.markdown("**Ultimas preguntas**")
             st.dataframe(recientes_log[columnas].assign(
                 timestamp=pd.to_datetime(recientes_log["timestamp"], utc=True, format="ISO8601")
