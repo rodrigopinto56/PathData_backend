@@ -274,3 +274,58 @@ def test_preguntas_derivadas_no_cuentan_para_el_sla():
     m = O.metricas_asistente(log, ahora, 7)
     assert m["preguntas"] == 3 and m["derivadas"] == 1 and m["pct_ia"] == pytest.approx(66.7)
     assert m["por_canal"] == {"cliente": 2, "ejecutivo": 1}
+
+
+# --- Mejoras tras la 1a evaluacion con Llama 3.2 (exito 55%) -------------------------
+def test_la_cifra_principal_la_pone_el_sistema():
+    """Aunque la IA solo de consejos generales (el fallo de la 1a evaluacion),
+    la respuesta trae la cifra que se pregunto."""
+    llm = FakeListChatModel(responses=["- Revisa tus gastos cada semana.\n- Aparta algo el día de pago."])
+    r = C.responder_cliente("¿Cuánto debería ahorrar?", _datos(_cliente(gasto=2700.0)), llm)
+    assert r["modo"] == "ia" and r["respuesta"].startswith("La meta es ahorrar $600 al mes")
+    assert r["pasos"].startswith("- Revisa") and "Dato principal" not in r["respuesta"]
+
+
+def test_la_cifra_se_muestra_antes_de_esperar_a_la_ia():
+    vistos = []
+
+    class LLMLento(FakeListChatModel):
+        def _call(self, *args, **kwargs):
+            assert vistos, "la interfaz debe recibir la cifra ANTES de que la IA responda"
+            return super()._call(*args, **kwargs)
+
+    llm = LLMLento(responses=["- Programa tu ahorro."])
+    r = C.responder_cliente("¿Cuánto debería ahorrar?", _datos(_cliente(gasto=2700.0)), llm, al_tener_principal=vistos.append)
+    assert vistos == [r["principal"]] and "$600" in vistos[0]
+
+
+def test_derivados_no_llaman_al_callback():
+    vistos = []
+    C.responder_cliente("Me robaron la tarjeta", _datos(_cliente()), FakeListChatModel(responses=["x"]),
+                        al_tener_principal=vistos.append)
+    assert vistos == []
+
+
+def test_siempre_hay_tres_clientes_de_ejemplo(clientes):
+    """Si un perfil "de libro" no existe en los datos, se usa el mas parecido."""
+    sin_deudas_pesadas = clientes.assign(pago_mensual_deuda_usd=clientes["pago_mensual_deuda_usd"].clip(upper=50))
+    ejemplos = C.clientes_ejemplo(sin_deudas_pesadas)
+    assert len(ejemplos) == 3 and len(set(ejemplos.values())) == 3
+
+
+def test_evaluacion_con_ia_que_omite_cifras_cumple_la_meta(clientes):
+    import evaluar_asesor as E
+
+    llm = FakeListChatModel(responses=["- Revisa tus gastos cada semana.\n- Habla con tu banco si lo necesitas."])
+    _, resumen = E.evaluar(clientes, FECHA, llm)
+    assert resumen["preguntas"] == 30
+    assert resumen["exito_final_pct"] >= 84 and resumen["veracidad_final_pct"] == 100
+
+
+def test_configuracion_rapida_del_modelo():
+    llm = C.crear_llm(url="http://127.0.0.1:9")
+    assert llm.keep_alive == C.KEEP_ALIVE and llm.num_predict == C.MAX_TOKENS_PASOS and llm.temperature == 0
+
+
+def test_calentar_sin_ollama_no_truena():
+    assert C.calentar_modelo(url="http://127.0.0.1:9", timeout=1) is False

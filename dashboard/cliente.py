@@ -23,6 +23,7 @@ from __future__ import annotations
 import html
 import os
 import sys
+import threading
 import time
 
 import pandas as pd
@@ -116,7 +117,15 @@ def _estado_ollama() -> tuple[bool, str]:
 
 @st.cache_resource
 def _llm():
-    return asis.crear_llm()
+    return ase.crear_llm()   # respuestas cortas y modelo en memoria (S19)
+
+
+@st.cache_resource(ttl=50 * 60, show_spinner=False)
+def _calentar_modelo() -> bool:
+    """Carga el modelo en segundo plano al abrir el portal (y de nuevo antes de que
+    Ollama lo libere): asi la primera pregunta no espera ~1 minuto."""
+    threading.Thread(target=ase.calentar_modelo, daemon=True).start()
+    return True
 
 
 def _md(texto: str) -> str:
@@ -301,7 +310,9 @@ st.caption(
     "Responde solo con tu información y con reglas de educación financiera; no aprueba créditos ni recomienda "
     "productos de inversión específicos."
 )
-if not ia_disponible:
+if ia_disponible:
+    _calentar_modelo()
+else:
     st.info("El asesor con IA no está disponible en este momento. Mientras tanto te respondo con tus datos exactos.")
 
 datos_cliente = ase.DatosCliente(fecha=fecha, perfil=perfil, clientes=clientes)
@@ -313,22 +324,6 @@ for i, ejemplo in enumerate(ase.PREGUNTAS_EJEMPLO):
     if columnas_ejemplo[i % 3].button(ejemplo, key=f"ej_cliente_{i}", use_container_width=True):
         pregunta = ejemplo
 pregunta = st.chat_input("Escribe tu pregunta (por ejemplo: ¿cómo pago mis deudas más rápido?)") or pregunta
-
-if pregunta:
-    with st.spinner("Revisando tus datos…"):
-        inicio = time.time()
-        resultado = ase.responder_cliente(pregunta, datos_cliente, _llm() if ia_disponible else None)
-        historial.append({"pregunta": pregunta, **resultado})
-        # Observabilidad (Vista 0). Privacidad: se registran el tema y el modo,
-        # NO el texto de la pregunta ni el numero de cliente.
-        obs.registrar_pregunta({
-            "timestamp": pd.Timestamp.now(tz="America/Mexico_City").isoformat(), "fecha_datos": fecha,
-            "canal": "cliente", "pregunta": "(cliente) " + ", ".join(resultado["temas"]),
-            "modo": resultado["modo"], "segundos": round(time.time() - inicio, 1),
-            "reintentos": resultado.get("reintentos", 0), "consultas": resultado["temas"],
-            "cifras_no_verificadas": len(resultado.get("cifras_no_verificadas", [])),
-            "modelo": asis.OLLAMA_MODEL if resultado["modo"] in ("ia", "respaldo") else None,
-        })
 
 for turno in historial[-6:]:
     with st.chat_message("user"):
@@ -346,6 +341,33 @@ for turno in historial[-6:]:
             st.caption(f"Revisé: {temas} · Respuesta {origen}.")
         if turno.get("cifras_no_verificadas"):
             st.caption("Algunas cifras no se pudieron confirmar con tus datos: tómalas como aproximadas.")
+if pregunta:
+    with st.chat_message("user"):
+        st.markdown(_md(pregunta))
+    with st.chat_message("assistant"):
+        vista = st.empty()
+
+        def _mostrar_principal(principal: str) -> None:
+            # La cifra la calcula el sistema: se muestra al instante mientras la IA escribe los pasos
+            vista.markdown(_md(principal) + "\n\n*Preparando tus pasos a seguir…*")
+
+        with st.spinner("Revisando tus datos…"):
+            inicio = time.time()
+            resultado = ase.responder_cliente(pregunta, datos_cliente, _llm() if ia_disponible else None,
+                                              al_tener_principal=_mostrar_principal)
+    historial.append({"pregunta": pregunta, **resultado})
+    # Observabilidad (Vista 0). Privacidad: se registran el tema y el modo,
+    # NO el texto de la pregunta ni el numero de cliente.
+    obs.registrar_pregunta({
+        "timestamp": pd.Timestamp.now(tz="America/Mexico_City").isoformat(), "fecha_datos": fecha,
+        "canal": "cliente", "pregunta": "(cliente) " + ", ".join(resultado["temas"]),
+        "modo": resultado["modo"], "segundos": round(time.time() - inicio, 1),
+        "reintentos": resultado.get("reintentos", 0), "consultas": resultado["temas"],
+        "cifras_no_verificadas": len(resultado.get("cifras_no_verificadas", [])),
+        "modelo": asis.OLLAMA_MODEL if resultado["modo"] in ("ia", "respaldo") else None,
+    })
+    st.rerun()  # la respuesta completa se dibuja con el historial
+
 if historial and st.button("Borrar conversación"):
     historial.clear()
     st.rerun()
