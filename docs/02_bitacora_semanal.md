@@ -406,3 +406,28 @@ también era atender a **un cliente que necesita orientación y no tiene a un ej
 **Evidencia:** el portal se revisó en el navegador (escritorio y celular) con datos sintéticos, en modo básico. El banco
 de evaluación en modo básico da 100%. La medición con Llama 3.2 se corre en la máquina del equipo
 (`docker compose exec streamlit-cliente python evaluar_asesor.py`).
+
+### Semana 19 (frontend) — Identidad visual BBVA en los tres tableros
+
+**Objetivo:** que el técnico (8501), el ejecutivo (8502) y el portal del cliente (8503) se vean como un solo producto,
+con los colores y el logo de BBVA y una presentación lo más profesional posible.
+
+**Qué se hizo**
+- **`dashboard/tema_bbva.py`:** un solo lugar para todo lo visual:
+  - paleta (navy #072146, core #004481, azul medio #1973B8, aqua y colores de estado);
+  - tipografía, encabezado con el logo, títulos de sección y chips de estado;
+  - estilo común de las gráficas de Plotly.
+- **`dashboard/.streamlit/config.toml`:** tema de Streamlit compartido (claro, color primario core blue) y barra de
+  herramientas en modo "viewer" (sin botón *Deploy*). Se quitaron los `--theme.*` de `docker-compose.yml`.
+- **Logo:** se extrajo de la imagen oficial en versión blanca (para la franja navy) y navy (para el pie de página),
+  más un ícono para la pestaña del navegador (`dashboard/assets/`).
+- **Dashboard técnico:** pasó del tema oscuro al tema BBVA. Las 7 vistas ahora son **pestañas** (antes era una sola
+  página muy larga). Tarjetas de SLA rediseñadas, nombres legibles para los 37 KPIs, columnas en español y textos con acentos.
+- **Dashboard ejecutivo y portal del cliente:** mismo encabezado, secciones numeradas (01, 02…) y pie de página con logo.
+  Se corrigió una tarjeta que mostraba HTML crudo cuando no tenía barra de avance.
+- **Reporte HTML descargable:** encabezado navy con el logo y los mismos colores de estado.
+
+**Decisiones**
+- **Paleta de gráficas validada:** azul medio, aqua oscuro, naranja y morado. Se validó con un script de daltonismo; el
+  azul core (#004481) quedó para la interfaz porque es demasiado oscuro para distinguir series.
+- **Los colores de estado (verde, ámbar, rojo) se reservan para estados** y siempre van con ícono y texto.

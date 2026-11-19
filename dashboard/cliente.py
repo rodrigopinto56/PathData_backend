@@ -42,64 +42,48 @@ except ModuleNotFoundError:
 
 from data_loader import cargar_clientes_particion, cargar_gold_kpis
 
-# --- Tokens (tema claro, mismos que el dashboard ejecutivo) ---
-TEXTO = "#0b0b0b"
-TEXTO_2 = "#52514e"
-LINEA = "#e4e3df"
-ACENTO = "#072146"
-SERIE = "#2a78d6"
-FUENTE_TITULOS = "'Source Serif 4', Georgia, 'Times New Roman', serif"
-FUENTE_TEXTO = "'IBM Plex Sans', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
-URL_FUENTES = (
-    "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600"
-    "&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap"
-)
+import tema_bbva as tema
+
+# --- Tokens: todos vienen del tema comun de BBVA (dashboard/tema_bbva.py) ---
+TEXTO, TEXTO_2, LINEA, ACENTO, SERIE = tema.TEXTO, tema.TEXTO_2, tema.LINEA, tema.NAVY, tema.SERIE
 # Semaforo: color + icono (nunca solo color)
 ESTILO_ESTADO = {
-    "bien": ("#1f8a4c", "✓"), "atencion": ("#c27a00", "!"), "urgente": ("#d03b3b", "✕"), "sin_datos": ("#8a8984", "?"),
+    "bien": (tema.VERDE, "✓"), "atencion": (tema.AMBAR, "!"), "urgente": (tema.ROJO, "✕"), "sin_datos": (tema.GRIS, "?"),
 }
-COLOR_NIVEL = {"Sólida": "#1f8a4c", "En construcción": "#c27a00", "Frágil": "#d03b3b", "Sin datos": "#8a8984"}
+COLOR_NIVEL = {"Sólida": tema.VERDE, "En construcción": tema.AMBAR, "Frágil": tema.ROJO, "Sin datos": tema.GRIS}
 
-st.set_page_config(page_title="Mi asesor financiero", layout="centered")
+tema.configurar_pagina("Mi asesor financiero", layout="centered", ancho_max=920)
 st.markdown(
     f"""
     <style>
-      @import url('{URL_FUENTES}');
-      .stApp, .stApp p, .stApp li, .stApp label, .stApp button, .stApp input,
-      .stApp [data-testid="stMarkdownContainer"], .stApp [data-testid="stCaptionContainer"],
-      .stApp [data-testid="stMetricLabel"] {{ font-family: {FUENTE_TEXTO}; }}
-      .stApp h1, .stApp h2, .stApp h3 {{ font-family: {FUENTE_TITULOS}; color: {ACENTO}; letter-spacing: -0.01em; }}
-      .stApp h1 {{ font-weight: 700; font-size: 2.2rem; }}
-      .stApp [data-testid="stMetricValue"] {{ font-weight: 600; font-variant-numeric: tabular-nums; }}
-      .block-container {{ padding-top: 2rem; max-width: 860px; }}
       .muted {{ color:{TEXTO_2} !important; }}
       .score {{ background:#fff; border:1px solid {LINEA}; border-left:8px solid; border-radius:14px;
-                padding:18px 22px; display:flex; align-items:center; gap:22px; flex-wrap:wrap; margin-bottom:12px; }}
-      .score .num {{ font-family:{FUENTE_TEXTO}; font-size:3.2rem; font-weight:600; line-height:1; color:{TEXTO};
+                padding:20px 24px; display:flex; align-items:center; gap:24px; flex-wrap:wrap; margin-bottom:14px;
+                box-shadow:0 1px 2px rgba(7,33,70,0.04); }}
+      .score .num {{ font-family:{tema.FUENTE_TEXTO}; font-size:3.2rem; font-weight:600; line-height:1; color:{TEXTO};
                      font-variant-numeric: tabular-nums; }}
       .score .num small {{ font-size:1.1rem; color:{TEXTO_2}; font-weight:500; }}
-      .score .nivel {{ font-size:1.15rem; font-weight:600; }}
+      .score .nivel {{ font-family:{tema.FUENTE_TITULOS}; font-size:1.3rem; font-weight:600; }}
       .score p {{ margin:4px 0 0; color:{TEXTO}; }}
-      .pilar {{ background:#fff; border:1px solid {LINEA}; border-radius:12px; padding:14px 16px; height:100%; margin-bottom:12px; }}
+      .pilar {{ background:#fff; border:1px solid {LINEA}; border-radius:12px; padding:16px 18px; height:100%; margin-bottom:12px;
+                box-shadow:0 1px 2px rgba(7,33,70,0.04); }}
       .pilar-top {{ display:flex; justify-content:space-between; align-items:center; gap:8px; }}
-      .pilar h4 {{ margin:0; font-family:{FUENTE_TEXTO}; font-size:0.78rem; font-weight:600; text-transform:uppercase;
-                   letter-spacing:0.06em; color:{TEXTO_2}; }}
-      .pilar .valor {{ font-size:1.7rem; font-weight:600; margin:6px 0 2px; color:{TEXTO}; font-variant-numeric: tabular-nums; }}
-      .pilar p {{ margin:2px 0 0; font-size:0.88rem; color:{TEXTO}; }}
-      .pilar .meta {{ font-size:0.78rem; color:{TEXTO_2}; margin-top:6px; }}
-      .chip {{ display:inline-flex; align-items:center; gap:5px; border:1.5px solid; border-radius:999px;
-               padding:1px 9px 1px 2px; font-size:0.75rem; font-weight:500; color:{TEXTO}; white-space:nowrap; }}
-      .dot {{ display:inline-grid; place-items:center; width:17px; height:17px; border-radius:50%;
-              color:#fff; font-size:0.7rem; font-weight:700; }}
-      .accion {{ background:#fff; border:1px solid {LINEA}; border-radius:10px; padding:12px 16px; margin-bottom:8px; color:{TEXTO}; }}
+      .pilar h4 {{ margin:0; font-family:{tema.FUENTE_TEXTO}; font-size:0.74rem; font-weight:700; text-transform:uppercase;
+                   letter-spacing:0.08em; color:{TEXTO_2}; }}
+      .pilar .valor {{ font-size:1.8rem; font-weight:600; margin:8px 0 2px; color:{TEXTO}; font-variant-numeric: tabular-nums; }}
+      .pilar p {{ margin:2px 0 0; font-size:0.9rem; color:{TEXTO}; }}
+      .pilar .meta {{ font-size:0.78rem; color:{TEXTO_2}; margin-top:8px; padding-top:8px; border-top:1px solid {LINEA}; }}
+      .accion {{ background:#fff; border:1px solid {LINEA}; border-left:4px solid {tema.CORE}; border-radius:10px;
+                 padding:14px 18px; margin-bottom:10px; color:{TEXTO}; }}
       .accion b {{ color:{ACENTO}; }}
-      .paso {{ display:inline-grid; place-items:center; width:24px; height:24px; border-radius:50%; background:{ACENTO};
+      .paso {{ display:inline-grid; place-items:center; width:24px; height:24px; border-radius:50%; background:{tema.CORE};
                color:#fff; font-size:0.8rem; font-weight:700; margin-right:8px; }}
-      .comp {{ margin:10px 0 14px; }}
+      .comp {{ background:#fff; border:1px solid {LINEA}; border-radius:10px; padding:12px 16px; margin:0 0 10px; }}
       .comp-top {{ display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; color:{TEXTO}; font-size:0.92rem; }}
-      .barra {{ height:8px; background:{LINEA}; border-radius:4px; margin-top:6px; overflow:hidden; }}
+      .barra {{ height:8px; background:{tema.SUPERFICIE_2}; border-radius:4px; margin-top:8px; overflow:hidden; }}
       .barra span {{ display:block; height:100%; background:{SERIE}; border-radius:4px; }}
-      .aviso {{ background:#f4f7fb; border:1px solid #d6e0ee; border-radius:10px; padding:12px 16px; color:{TEXTO}; margin:8px 0; }}
+      .aviso {{ background:#EAF3FB; border:1px solid #C5DCF0; border-left:4px solid {tema.CORE}; border-radius:10px;
+                padding:12px 16px; color:{TEXTO}; margin:8px 0; }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -146,12 +130,12 @@ def _e(texto) -> str:
 
 fecha = _fecha_reciente()
 if fecha is None:
-    st.title("Mi asesor financiero")
+    tema.encabezado("Mi asesor financiero", eyebrow="Banca personal")
     st.info("Todavía no hay datos disponibles. Vuelve a intentarlo más tarde.")
     st.stop()
 clientes = _clientes(fecha)
 if clientes.empty:
-    st.title("Mi asesor financiero")
+    tema.encabezado("Mi asesor financiero", eyebrow="Banca personal")
     st.info("Todavía no hay datos de clientes para la fecha más reciente.")
     st.stop()
 
@@ -160,10 +144,9 @@ if clientes.empty:
 # ---------------------------------------------------------------------------
 cliente_id = st.session_state.get("cliente_id")
 if not cliente_id:
-    st.title("Mi asesor financiero")
-    st.markdown(
-        '<p class="muted">Orientación personal sobre tu ahorro, tus deudas y tu presupuesto, a cualquier hora '
-        "y sin esperar a un ejecutivo.</p>", unsafe_allow_html=True)
+    tema.encabezado("Mi asesor financiero", eyebrow="Banca personal",
+                    subtitulo="Orientación sobre tu ahorro, tus deudas y tu presupuesto, a cualquier hora y sin esperar a un ejecutivo.")
+    tema.seccion("Accede a tu resumen", eyebrow="Bienvenido", primera=True)
     with st.form("acceso"):
         numero = st.text_input("Número de cliente", placeholder="Por ejemplo: U00041")
         if st.form_submit_button("Entrar", type="primary"):
@@ -188,11 +171,12 @@ if perfil is None:  # la particion cambio y el cliente ya no esta
     st.session_state.pop("cliente_id", None)
     st.rerun()
 
-encabezado, salir = st.columns([5, 1])
-encabezado.title("Hola, aquí está tu resumen")
-encabezado.markdown(
-    f'<p class="muted">Cliente {_e(perfil["user_id"])} · datos al {rep.fecha_legible(fecha)}</p>', unsafe_allow_html=True)
-if salir.button("Salir"):
+tema.encabezado(
+    "Hola, este es tu resumen financiero", eyebrow="Mi asesor financiero",
+    meta_html=f'Cliente <b>{_e(perfil["user_id"])}</b><br>Datos al {rep.fecha_legible(fecha)}',
+)
+_, salir = st.columns([6, 1])
+if salir.button("Salir", use_container_width=True):
     st.session_state.pop("cliente_id", None)
     st.rerun()
 
@@ -208,7 +192,8 @@ frase = {
     "Frágil": "Hay puntos que necesitan atención. Abajo tienes los pasos, en orden.",
     "Sin datos": "No tenemos datos suficientes para calcularla.",
 }[nivel]
-st.subheader("Tu salud financiera")
+tema.seccion("Tu salud financiera", eyebrow="01 · Diagnóstico", primera=True,
+             descripcion="Cuatro pilares con reglas sencillas que usan los bancos y los educadores financieros.")
 st.markdown(
     f'<div class="score" style="border-left-color:{color}"><div class="num">{puntaje if puntaje is not None else "–"}<small> / 100</small></div>'
     f'<div><div class="nivel" style="color:{color}">{_e(nivel)}</div><p>{_e(frase)}</p></div></div>',
@@ -220,7 +205,7 @@ for inicio in range(0, len(lista), 2):
         c, icono = ESTILO_ESTADO[pilar.estado]
         columna.markdown(
             f'<div class="pilar"><div class="pilar-top"><h4>{_e(pilar.titulo)}</h4>'
-            f'<span class="chip" style="border-color:{c}"><span class="dot" style="background:{c}">{icono}</span>{ase.ETIQUETA_ESTADO[pilar.estado]}</span></div>'
+            f'{tema.chip(ase.ETIQUETA_ESTADO[pilar.estado], c, icono)}</div>'
             f'<div class="valor">{_e(pilar.valor)}</div><p>{_e(pilar.explicacion)}</p>'
             f'<div class="meta">{_e(pilar.meta)}</div></div>',
             unsafe_allow_html=True,
@@ -238,7 +223,8 @@ with st.expander("¿Cómo se calcula?"):
 # ---------------------------------------------------------------------------
 # 2) Tu plan de accion
 # ---------------------------------------------------------------------------
-st.subheader("Tu plan de acción")
+tema.seccion("Tu plan de acción", eyebrow="02 · Qué hacer",
+             descripcion="Pasos concretos, con montos, en orden de importancia.")
 acciones = ase.plan_accion(perfil, lista)
 for i, accion in enumerate(acciones, 1):
     st.markdown(
@@ -256,7 +242,8 @@ if any(a["requiere_ejecutivo"] for a in acciones):
 # ---------------------------------------------------------------------------
 # 3) ¿Y si recorto mis gastos? + presupuesto 50/30/20
 # ---------------------------------------------------------------------------
-st.subheader("¿Y si recorto mis gastos?")
+tema.seccion("¿Y si recorto mis gastos?", eyebrow="03 · Simulador",
+             descripcion="Mueve la barra para ver cuánto te quedaría al mes y cuándo completarías tu fondo de emergencia.")
 recorte = st.slider("Recorte de tus gastos mensuales", 0, 30, 10, step=5, format="%d%%",
                     help="Mueve la barra para ver cuánto te quedaría al mes si gastaras menos")
 simulacion = ase.simular_recorte(perfil, recorte)
@@ -288,12 +275,9 @@ if presupuesto:
 # ---------------------------------------------------------------------------
 comparacion = ase.comparativo(perfil, clientes)
 if comparacion:
-    st.subheader("Comparado con personas como tú")
-    st.markdown(
-        f'<p class="muted">{_e(comparacion["grupo"].capitalize())} ({rep.fmt_int(comparacion["personas"])} personas). '
-        "Usamos promedios de grupos grandes: nunca ves ni compartimos los datos de nadie.</p>",
-        unsafe_allow_html=True,
-    )
+    tema.seccion("Comparado con personas como tú", eyebrow="04 · Referencia",
+                 descripcion=f'{_e(comparacion["grupo"].capitalize())} ({rep.fmt_int(comparacion["personas"])} personas). '
+                             "Usamos valores típicos de grupos grandes: nunca ves ni compartimos los datos de nadie.")
     for fila in comparacion["filas"]:
         lugar = fila["mejor_que_pct"]
         st.markdown(
@@ -310,8 +294,7 @@ if comparacion:
 # ---------------------------------------------------------------------------
 # 5) Preguntale a tu asesor
 # ---------------------------------------------------------------------------
-st.divider()
-st.subheader("Pregúntale a tu asesor")
+tema.seccion("Pregúntale a tu asesor", eyebrow="05 · Asesor virtual")
 ia_disponible, _ = _estado_ollama()
 st.caption(
     "Asesor con inteligencia artificial que corre en los servidores del banco: tus datos no salen a internet. "
@@ -367,8 +350,7 @@ if historial and st.button("Borrar conversación"):
     historial.clear()
     st.rerun()
 
-st.divider()
-st.caption(
+tema.pie_de_pagina(
     "Información educativa basada en tus datos; no es una oferta de crédito ni una recomendación de inversión. "
     "Datos de demostración (dataset público sintético), actualizados cada día por el proceso automático de datos."
 )

@@ -231,7 +231,7 @@ def evaluar_slas(entradas: dict, config: dict, ahora: pd.Timestamp) -> pd.DataFr
         detalle = ""
         minimo = sla.get("minimo_preguntas")
         if minimo and metricas["asistente_preguntas"] < minimo:
-            valor, detalle = None, f"menos de {minimo} preguntas en {config['ventana_dias']} dias"
+            valor, detalle = None, f"menos de {minimo} preguntas en {config['ventana_dias']} días"
         if valor is None or (isinstance(valor, float) and np.isnan(valor)):
             estado = SIN_DATOS
         else:

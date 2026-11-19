@@ -51,77 +51,56 @@ from data_loader import (
     cargar_tabla_particion,
 )
 
-# --- Tokens de tema claro ---
-SURFACE = "#fcfcfb"
-TEXTO = "#0b0b0b"
-TEXTO_2 = "#52514e"
-LINEA = "#e4e3df"
-ACENTO = "#072146"        # azul marino institucional para titulos
-SERIE = "#2a78d6"         # una sola serie -> un solo color
-# Pronostico del cliente demo: dos series (ingreso / gasto) -> categoricos
-# slot 1 y slot 2 de la paleta, en ese orden fijo.
-COLOR_SERIES = {"ingreso": "#2a78d6", "gasto": "#eb6834"}
-RELLENO_BANDA = {"ingreso": "rgba(42,120,214,0.14)", "gasto": "rgba(235,104,52,0.14)"}
+import tema_bbva as tema
 
-# --- Tipografia ---
-# Titulos en serif editorial (como la lamina del proyecto) y texto/cifras en
-# una sans corporativa con numeros tabulares (las cifras quedan alineadas).
-# Si el navegador no puede bajar Google Fonts, cae a Georgia / Segoe UI.
-FUENTE_TITULOS = "'Source Serif 4', Georgia, 'Times New Roman', serif"
-FUENTE_TEXTO = "'IBM Plex Sans', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
-URL_FUENTES = (
-    "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600"
-    "&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap"
-)
+# --- Tokens: todos vienen del tema comun de BBVA (dashboard/tema_bbva.py) ---
+SURFACE = tema.SUPERFICIE
+TEXTO = tema.TEXTO
+TEXTO_2 = tema.TEXTO_2
+LINEA = tema.LINEA
+ACENTO = tema.NAVY
+SERIE = tema.SERIE        # una sola serie -> un solo color
+# Pronostico del cliente demo: dos series (ingreso / gasto) -> slots 1 y 3 de
+# la paleta categorica validada (azul y naranja: maxima separacion).
+COLOR_SERIES = {"ingreso": tema.MEDIO, "gasto": tema.NARANJA}
+RELLENO_BANDA = {"ingreso": "rgba(25,115,184,0.14)", "gasto": "rgba(247,137,59,0.16)"}
+FUENTE_TITULOS = tema.FUENTE_TITULOS
+FUENTE_TEXTO = tema.FUENTE_TEXTO
 UMBRAL_INDICE = 40        # meta del indice de riesgo
 
-st.set_page_config(page_title="Salud financiera de la cartera", layout="wide")
+tema.configurar_pagina("Salud financiera de la cartera", ancho_max=1240)
 
 st.markdown(
     f"""
     <style>
-      @import url('{URL_FUENTES}');
-
-      /* Texto general (sin tocar los iconos de Streamlit, que usan su propia fuente) */
-      .stApp, .stApp p, .stApp li, .stApp label, .stApp button, .stApp input,
-      .stApp [data-testid="stMarkdownContainer"], .stApp [data-testid="stCaptionContainer"],
-      .stApp [data-testid="stMetricLabel"], .stApp [data-baseweb="select"] div {{
-        font-family: {FUENTE_TEXTO};
-      }}
-      /* Titulos */
-      .stApp h1, .stApp h2, .stApp h3 {{
-        font-family: {FUENTE_TITULOS}; color: {ACENTO}; letter-spacing: -0.01em;
-      }}
-      .stApp h1 {{ font-weight: 700; font-size: 2.4rem; }}
-      .stApp h3 {{ font-weight: 600; }}
-      /* Cifras: sans, peso medio, numeros tabulares */
-      .big, .stApp [data-testid="stMetricValue"], .stApp [data-testid="stMetricValue"] * {{
-        font-family: {FUENTE_TEXTO}; font-weight: 600;
-        font-variant-numeric: tabular-nums lining-nums; letter-spacing: -0.02em; color: {TEXTO};
-      }}
-      .block-container {{ padding-top: 2rem; max-width: 1200px; }}
-      .sub {{ color: {TEXTO_2}; margin-top: -0.6rem; }}
-      .diag {{ background:#fff; border:1px solid {LINEA}; border-left:6px solid var(--c); border-radius:10px; padding:14px 18px; margin: 8px 0 4px; }}
-      .diag p {{ margin:8px 0 0; font-size:1.05rem; color:{TEXTO}; }}
-      .card {{ background:#fff; border:1px solid {LINEA}; border-radius:12px; padding:16px; height:100%; }}
+      .big {{ font-family:{FUENTE_TEXTO}; font-weight:600; font-variant-numeric:tabular-nums lining-nums;
+              letter-spacing:-0.02em; color:{TEXTO}; font-size:2.1rem; margin:6px 0 2px; }}
+      .sub {{ color:{TEXTO_2}; margin:6px 0 0; }}
+      .diag {{ background:#fff; border:1px solid {LINEA}; border-left:6px solid; border-radius:12px; padding:16px 20px;
+               margin: 4px 0 4px; box-shadow:0 1px 2px rgba(7,33,70,0.04); }}
+      .diag p {{ margin:8px 0 0; font-size:1.08rem; color:{TEXTO}; }}
+      .card {{ background:#fff; border:1px solid {LINEA}; border-radius:12px; padding:16px; height:100%;
+               box-shadow:0 1px 2px rgba(7,33,70,0.04); }}
       .card-top {{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }}
-      .card h4 {{ margin:10px 0 0; font-family:{FUENTE_TEXTO}; font-size:0.78rem; font-weight:600;
-                  text-transform:uppercase; letter-spacing:0.06em; color:{TEXTO_2}; }}
-      .big {{ font-size:2.1rem; margin:6px 0 2px; }}
+      .card h4 {{ margin:10px 0 0; font-family:{FUENTE_TEXTO}; font-size:0.74rem; font-weight:700;
+                  text-transform:uppercase; letter-spacing:0.08em; color:{TEXTO_2}; }}
       .card p {{ margin:4px 0 0; font-size:0.85rem; color:{TEXTO}; }}
       .muted {{ color:{TEXTO_2} !important; }}
-      .chip {{ display:inline-flex; align-items:center; gap:5px; border:1.5px solid; border-radius:999px; padding:1px 9px 1px 2px; font-size:0.75rem; font-weight:500; color:{TEXTO}; white-space:nowrap; }}
+      .chip {{ display:inline-flex; align-items:center; gap:5px; border:1.5px solid; border-radius:999px; padding:1px 10px 1px 2px;
+               font-size:0.75rem; font-weight:600; color:{TEXTO}; white-space:nowrap; background:#fff; }}
       .dot {{ display:inline-grid; place-items:center; width:17px; height:17px; border-radius:50%; color:#fff; font-size:0.7rem; font-weight:700; }}
-      .bar {{ display:flex; height:28px; border-radius:6px; overflow:hidden; gap:2px; }}
+      .bar {{ display:flex; height:30px; border-radius:8px; overflow:hidden; gap:2px; }}
       .leg {{ display:flex; flex-wrap:wrap; gap:6px 28px; margin-top:10px; color:{TEXTO}; }}
       .sq {{ display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:6px; }}
-      .prog {{ height:6px; background:{LINEA}; border-radius:3px; margin-top:10px; overflow:hidden; }}
+      .prog {{ height:6px; background:{tema.SUPERFICIE_2}; border-radius:3px; margin-top:10px; overflow:hidden; }}
       .prog span {{ display:block; height:100%; border-radius:3px; }}
       .prog-txt {{ font-size:0.75rem !important; color:{TEXTO_2} !important; margin-top:4px !important;
                    font-variant-numeric: tabular-nums; }}
-      .accion {{ background:#fff; border:1px solid {LINEA}; border-radius:10px; padding:12px 16px; margin-bottom:8px; color:{TEXTO}; }}
-      .prio {{ display:inline-block; font-size:0.72rem; font-weight:700; border-radius:4px; padding:0 7px; margin-right:8px; border:1px solid {TEXTO_2}; color:{TEXTO_2}; }}
-      .prio-alta {{ border-color:#d03b3b; color:#d03b3b; }}
+      .accion {{ background:#fff; border:1px solid {LINEA}; border-left:4px solid {tema.CORE}; border-radius:10px;
+                 padding:12px 16px; margin-bottom:8px; color:{TEXTO}; }}
+      .prio {{ display:inline-block; font-size:0.72rem; font-weight:700; border-radius:4px; padding:0 7px; margin-right:8px;
+               border:1px solid {TEXTO_2}; color:{TEXTO_2}; }}
+      .prio-alta {{ border-color:{tema.ROJO}; color:{tema.ROJO}; }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -173,7 +152,8 @@ def _chip(estado: str) -> str:
 kpis = _kpis()
 segmentos = _segmentos()
 
-st.title("Salud financiera de la cartera")
+cabecera = st.empty()
+tema.encabezado("Salud financiera de la cartera", eyebrow="Gemelo Digital Financiero · Vista ejecutiva", destino=cabecera)
 
 if kpis.empty:
     st.info("Todavía no hay indicadores publicados. El equipo de datos debe ejecutar el proceso diario (transformacion_gold_dag).")
@@ -195,41 +175,41 @@ if resumen is None:
     )
     st.stop()
 
+tema.encabezado(
+    "Salud financiera de la cartera", eyebrow="Gemelo Digital Financiero · Vista ejecutiva",
+    meta_html=f'Corte al <b>{rep.fecha_legible(fecha)}</b><br>{rep.fmt_int(resumen["total_clientes"])} clientes',
+    destino=cabecera,
+)
 with col_sub:
-    st.markdown(
-        f'<p class="sub">Gemelo Digital Financiero · Corte al {rep.fecha_legible(fecha)} · '
-        f'{rep.fmt_int(resumen["total_clientes"])} clientes</p>',
-        unsafe_allow_html=True,
-    )
+    tema.seccion("Diagnóstico general", eyebrow="01 · Resumen", primera=True)
 
 # ---------------------------------------------------------------------------
 # 1) Diagnostico + KPIs clave
 # ---------------------------------------------------------------------------
 diag = resumen["diagnostico"]
 st.markdown(
-    f'<div class="diag" style="--c:{rep.COLOR_ESTADO[diag["nivel"]]}">{_chip(diag["nivel"])}<p>{diag["frase"]}</p></div>',
+    f'<div class="diag" style="border-left-color:{rep.COLOR_ESTADO[diag["nivel"]]}">{_chip(diag["nivel"])}<p>{diag["frase"]}</p></div>',
     unsafe_allow_html=True,
 )
 
-st.subheader("Indicadores clave")
+tema.seccion("Indicadores clave", eyebrow="02 · KPIs de negocio",
+             descripcion="Cada indicador muestra su valor actual, la meta y cuánto falta para cumplirla.")
 columnas = st.columns(4)
 for columna, t in zip(columnas, resumen["tarjetas"]):
     nota = f" · {t['nota']}" if t["nota"] else ""
+    # En una sola linea: si una tarjeta no tiene barra de avance, una linea en
+    # blanco haria que Markdown mostrara el resto del HTML como codigo.
     columna.markdown(
-        f"""<div class="card">
-              {_chip(t['estado'])}<h4>{t['titulo']}</h4>
-              <div class="big">{t['valor']}</div>
-              <p>{_sin_latex(t['explicacion'])}</p>
-              {rep.barra_avance(t)}
-              <p class="muted">{t['meta']}{nota}</p>
-            </div>""",
+        f'<div class="card">{_chip(t["estado"])}<h4>{t["titulo"]}</h4>'
+        f'<div class="big">{t["valor"]}</div><p>{_sin_latex(t["explicacion"])}</p>'
+        f'{rep.barra_avance(t)}<p class="muted">{t["meta"]}{nota}</p></div>',
         unsafe_allow_html=True,
     )
 
 # ---------------------------------------------------------------------------
 # 2) Semaforo de clientes + 3) Dinero en juego
 # ---------------------------------------------------------------------------
-st.subheader("¿Cómo están nuestros clientes?")
+tema.seccion("¿Cómo están nuestros clientes?", eyebrow="03 · Clientes")
 barra = "".join(
     f'<div style="width:{s["pct"] or 0}%;background:{s["color"]}" title="{s["etiqueta"]}: {rep.fmt_pct(s["pct"])}"></div>'
     for s in resumen["semaforo"]
@@ -245,7 +225,7 @@ st.markdown(
 )
 st.caption("Cada cliente recibe una calificación de riesgo de 0 a 100: verde menos de 40, amarillo de 40 a 69, rojo 70 o más.")
 
-st.subheader("Dinero en juego")
+tema.seccion("Dinero en juego", eyebrow="04 · Exposición")
 d = resumen["dinero"]
 c1, c2, c3 = st.columns(3)
 c1.metric("Dinero prestado", rep.fmt_usd(d["exposicion"]), help="Suma de todos los préstamos vigentes.")
@@ -262,7 +242,7 @@ c3.caption("del total prestado")
 # ---------------------------------------------------------------------------
 # ¿Donde esta el riesgo?
 # ---------------------------------------------------------------------------
-st.subheader("¿Dónde está el riesgo?")
+tema.seccion("¿Dónde está el riesgo?", eyebrow="05 · Segmentos")
 dimensiones = [d for d in rep.NOMBRE_DIMENSION if not seg_fecha.empty and d in set(seg_fecha["dimension"])]
 if dimensiones:
     dimension = st.radio(
@@ -317,7 +297,7 @@ if dimensiones:
 # ---------------------------------------------------------------------------
 # 4) ¿Que hacemos?
 # ---------------------------------------------------------------------------
-st.subheader("Acciones sugeridas")
+tema.seccion("Acciones sugeridas", eyebrow="06 · Qué hacer")
 st.caption("Generadas automáticamente a partir de los indicadores que están fuera de meta.")
 for i, a in enumerate(resumen["acciones"], start=1):
     st.markdown(
@@ -326,7 +306,7 @@ for i, a in enumerate(resumen["acciones"], start=1):
         unsafe_allow_html=True,
     )
 
-st.subheader("Clientes prioritarios")
+tema.seccion("Clientes prioritarios", eyebrow="07 · Prioridades")
 clientes = _clientes(fecha)
 if clientes.empty or "indice_riesgo_consolidado" not in clientes.columns:
     st.info("El detalle por cliente no está disponible para esta fecha.")
@@ -390,7 +370,7 @@ else:
 pronostico = _tabla("gold_pronostico_cliente_demo", fecha)
 if not pronostico.empty:
     meta_pronostico = _metadata("_pronostico_metadata", fecha)
-    st.subheader("Cliente demo: próximos 6 meses")
+    tema.seccion("Cliente demo: próximos 6 meses", eyebrow="08 · Pronóstico")
     st.caption(
         "Un cliente de demostración con 5 años de transacciones (no representa a la cartera). "
         "Línea continua: lo que pasó. Punteada: lo esperado, con su rango probable."
@@ -506,7 +486,7 @@ def grafica_abanico(abanico: pd.DataFrame, saldo_inicial: float) -> go.Figure:
     figura = go.Figure()
     for bajo, alto, alfa in [("p5", "p95", 0.12), ("p25", "p75", 0.26)]:
         figura.add_trace(go.Scatter(x=meses + meses[::-1], y=col(alto) + col(bajo)[::-1], fill="toself",
-                                    fillcolor=f"rgba(42,120,214,{alfa})", line=dict(width=0), hoverinfo="skip"))
+                                    fillcolor=f"rgba(25,115,184,{alfa})", line=dict(width=0), hoverinfo="skip"))
     figura.add_trace(go.Scatter(
         x=meses, y=col("p50"), mode="lines+markers", line=dict(color=SERIE, width=2), marker=dict(size=8),
         customdata=list(zip(col("p5"), col("p95"))),
@@ -524,8 +504,7 @@ def _texto_mes(mes) -> str:
     return "—" if mes is None or pd.isna(mes) else f"mes {mes:.0f}"
 
 
-st.divider()
-st.subheader("Simulador de escenarios: ¿y si las cosas se ponen difíciles?")
+tema.seccion("Simulador de escenarios: ¿y si las cosas se ponen difíciles?", eyebrow="09 · Estrés Monte Carlo")
 st.caption(
     "Simulación Monte Carlo: en lugar de un solo pronóstico, se simulan miles de futuros posibles "
     "y se cuenta qué tan seguido pasa cada cosa, sobre todo los casos malos."
@@ -696,8 +675,7 @@ def _markdown_seguro(texto: str) -> str:
     return texto.replace("$", "\\$")
 
 
-st.divider()
-st.subheader("Pregúntale al asistente")
+tema.seccion("Pregúntale al asistente", eyebrow="10 · Asistente IA")
 ia_disponible, detalle_ia = _estado_ollama()
 st.caption(
     "Asistente con inteligencia artificial que corre en nuestros propios servidores (Ollama · "
@@ -758,10 +736,10 @@ if historial and st.button("Borrar conversación"):
 # ---------------------------------------------------------------------------
 # Compartir + glosario
 # ---------------------------------------------------------------------------
-st.divider()
+tema.seccion("Compartir y consultar", eyebrow="11 · Reporte")
 st.download_button(
     "Descargar reporte ejecutivo (1 página, imprimible)",
-    rep.generar_reporte_html(resumen, seg_fecha).encode("utf-8"),
+    rep.generar_reporte_html(resumen, seg_fecha, logo_data_uri=tema.logo_base64("blanco")).encode("utf-8"),
     file_name=f"reporte_ejecutivo_{fecha.replace('/', '-')}.html",
     mime="text/html",
     type="primary",
@@ -784,3 +762,6 @@ with st.expander("¿Cómo leer este tablero?"):
 - **Fuente:** datos de demostración (dataset público sintético), actualizados cada día por el proceso automático de datos.
         """
     )
+
+tema.pie_de_pagina("Gemelo Digital Financiero · Vista ejecutiva · Datos de demostración (dataset público sintético), "
+                   "actualizados cada día por el proceso automático de datos.")

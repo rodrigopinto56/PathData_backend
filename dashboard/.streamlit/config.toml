@@ -1,0 +1,18 @@
+# Semana 19 (frontend): tema comun de los tres tableros, con la paleta de BBVA.
+# Streamlit lo lee de /app/.streamlit/config.toml (el WORKDIR del contenedor).
+# Los colores y estilos finos viven en dashboard/tema_bbva.py.
+
+[theme]
+base = "light"
+primaryColor = "#004481"
+backgroundColor = "#F4F6F9"
+secondaryBackgroundColor = "#EEF2F7"
+textColor = "#121212"
+font = "sans serif"
+
+[client]
+# Oculta el boton "Deploy" y el menu de desarrollador: vista limpia para usuarios
+toolbarMode = "viewer"
+
+[browser]
+gatherUsageStats = false

@@ -39,7 +39,8 @@ SIN_DATOS = "Sin datos"
 ESTADO_NEGOCIO = {"OK": SALUDABLE, "ALERTA": ATENCION, "SIN_DATOS": SIN_DATOS, "INFO": "Informativo"}
 
 # Paleta de estado (fija): siempre acompanada de icono + texto, nunca solo color.
-COLOR_ESTADO = {SALUDABLE: "#0ca30c", ATENCION: "#fab219", CRITICO: "#d03b3b", SIN_DATOS: "#8a8984"}
+# S19: mismos tonos que el tema BBVA de los tableros (dashboard/tema_bbva.py).
+COLOR_ESTADO = {SALUDABLE: "#2E8B57", ATENCION: "#D99A00", CRITICO: "#DA3851", SIN_DATOS: "#8A94A3"}
 ICONO_ESTADO = {SALUDABLE: "✓", ATENCION: "!", CRITICO: "✕", SIN_DATOS: "–"}
 
 # Semaforo de clientes (indice de riesgo consolidado)
@@ -467,9 +468,10 @@ def barra_avance(tarjeta: dict) -> str:
     )
 
 
-def generar_reporte_html(resumen: dict, segmentos: pd.DataFrame | None = None) -> str:
+def generar_reporte_html(resumen: dict, segmentos: pd.DataFrame | None = None, logo_data_uri: str = "") -> str:
     """HTML autocontenido (sin JavaScript ni recursos externos): se puede
-    mandar por correo, abrir en cualquier navegador e imprimir a PDF."""
+    mandar por correo, abrir en cualquier navegador e imprimir a PDF.
+    `logo_data_uri`: logo de BBVA embebido (lo pasa el dashboard; el DAG no lo tiene)."""
     tarjetas = "".join(
         f"""<div class="card">
               {_chip(t['estado'])}<h3 style="margin-top:8px">{_e(t['titulo'])}</h3>
@@ -529,12 +531,19 @@ def generar_reporte_html(resumen: dict, segmentos: pd.DataFrame | None = None) -
      igual sin internet): usa Source Serif 4 / IBM Plex Sans si estan
      instaladas y si no Georgia / Segoe UI, presentes en casi todo equipo. */
   :root {{ --serif:'Source Serif 4',Georgia,'Times New Roman',serif; --sans:'IBM Plex Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;
-           --surface:#fcfcfb; --card:#ffffff; --ink:#0b0b0b; --ink-2:#52514e; --line:#e4e3df; --accent:#072146; }}
+           --surface:#F4F6F9; --card:#ffffff; --ink:#121212; --ink-2:#4D5A6B; --line:#DFE5EC; --accent:#072146;
+           --core:#004481; --claro:#5BBEFF; }}
   * {{ box-sizing:border-box; }}
   body {{ margin:0; background:var(--surface); color:var(--ink); font:15px/1.55 var(--sans); }}
   main {{ max-width:960px; margin:0 auto; padding:32px 16px; }}
-  header {{ border-bottom:3px solid var(--accent); padding-bottom:12px; margin-bottom:20px; }}
-  h1 {{ margin:0; font-family:var(--serif); font-size:30px; font-weight:700; letter-spacing:-0.01em; color:var(--accent); }}
+  header {{ background:linear-gradient(115deg, var(--accent) 0%, var(--accent) 60%, #0B3B74 100%); color:#fff;
+            border-radius:12px; padding:20px 24px; margin-bottom:22px; display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+            -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
+  header img {{ height:26px; width:auto; }}
+  header .sep {{ width:1px; align-self:stretch; background:rgba(255,255,255,0.3); }}
+  header .eyebrow {{ font-size:11px; font-weight:600; letter-spacing:0.14em; text-transform:uppercase; color:var(--claro); }}
+  header .muted {{ color:rgba(255,255,255,0.8); }}
+  h1 {{ margin:0; font-family:var(--serif); font-size:28px; font-weight:700; letter-spacing:-0.01em; color:#fff; }}
   h2 {{ font-family:var(--serif); font-size:20px; font-weight:600; margin:30px 0 10px; color:var(--accent); }}
   h3 {{ margin:0; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-2); }}
   .muted {{ color:var(--ink-2); font-size:13px; }}
@@ -556,7 +565,7 @@ def generar_reporte_html(resumen: dict, segmentos: pd.DataFrame | None = None) -
   .money {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }}
   ol.acc {{ padding-left:20px; }} ol.acc li {{ margin:8px 0; }}
   .prio {{ display:inline-block; font-size:11px; font-weight:700; border-radius:4px; padding:0 6px; margin-right:8px; border:1px solid var(--ink-2); }}
-  .prio-alta {{ border-color:#d03b3b; color:#d03b3b; }}
+  .prio-alta {{ border-color:#DA3851; color:#DA3851; }}
   table {{ width:100%; border-collapse:collapse; background:var(--card); font-size:14px; }}
   th, td {{ text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); }}
   th {{ color:var(--ink-2); font-weight:600; }}
@@ -565,8 +574,12 @@ def generar_reporte_html(resumen: dict, segmentos: pd.DataFrame | None = None) -
 </style></head>
 <body><main>
 <header>
-  <h1>Salud financiera de la cartera</h1>
-  <div class="muted">Gemelo Digital Financiero · Corte al {_e(fecha_legible(resumen['fecha']))} · {fmt_int(resumen['total_clientes'])} clientes</div>
+  {f'<img src="{logo_data_uri}" alt="BBVA"><div class="sep"></div>' if logo_data_uri.startswith("data:image/") else ""}
+  <div>
+    <div class="eyebrow">Gemelo Digital Financiero · Reporte ejecutivo</div>
+    <h1>Salud financiera de la cartera</h1>
+    <div class="muted">Corte al {_e(fecha_legible(resumen['fecha']))} · {fmt_int(resumen['total_clientes'])} clientes</div>
+  </div>
 </header>
 
 <div class="diag">{_chip(diag['nivel'])}<p style="margin:8px 0 0">{_e(diag['frase'])}</p></div>

@@ -44,66 +44,111 @@ from data_loader import (
     cargar_tabla_particion,
 )
 
+import tema_bbva as tema
+
 # --- Paleta fija del proyecto (misma en toda vista, nunca improvisada) ---
-# Tokens en modo oscuro, porque el tema por default de Streamlit es oscuro.
-# Sacados de la misma paleta de referencia, columna "Dark".
-SURFACE = "#1a1a19"        # fondo de la grafica (mismo que el fondo de Streamlit)
-TEXTO_PRIMARIO = "#ffffff"
-TEXTO_SECUNDARIO = "#c3c2b7"
-GRIDLINE = "#2c2c2a"
-BASELINE = "#383835"
+# S19: todos los tokens vienen del tema comun de BBVA (dashboard/tema_bbva.py),
+# el mismo de los tableros ejecutivo y del cliente.
+SURFACE = tema.SUPERFICIE
+TEXTO_PRIMARIO = tema.TEXTO
+TEXTO_SECUNDARIO = tema.TEXTO_2
+GRIDLINE = tema.LINEA
+BASELINE = tema.EJE
 
 # 'nivel' es un estado (INFO = todo bien, ALERTA = algo fallo), por eso usa
 # la paleta de "status", no colores categoricos genericos.
-COLOR_STATUS = {"INFO": "#0ca30c", "ALERTA": "#d03b3b", "OTRO": TEXTO_SECUNDARIO}
-COLOR_SERIE_PRINCIPAL = "#3987e5"  # slot 1 categorico, paso oscuro
+COLOR_STATUS = {"INFO": tema.VERDE, "ALERTA": tema.ROJO, "OTRO": tema.GRIS}
+COLOR_SERIE_PRINCIPAL = tema.SERIE  # slot 1 categorico (azul medio BBVA)
 
 # 'fuente' si es identidad (dos datasets distintos, sin orden ni jerarquia
-# entre ellos), por eso usa colores categoricos en orden fijo (slot 1, slot 2),
-# nunca el mismo verde/rojo de 'nivel' - es una serie distinta, color distinto.
-COLOR_FUENTE = {"loan_default_risk": "#3987e5", "personal_finance_ml": "#d95926"}
+# entre ellos), por eso usa colores categoricos en orden fijo (slot 1, slot 3:
+# azul y naranja, la pareja con mayor separacion), nunca el verde/rojo de 'nivel'.
+COLOR_FUENTE = {"loan_default_risk": tema.MEDIO, "personal_finance_ml": tema.NARANJA}
 UMBRAL_CALIDAD_OK = 95.0  # % minimo antes de considerar una particion en riesgo
 
 # 'rango_credit_score' SI tiene un orden (Bajo -> Excelente), por eso usa
 # una rampa secuencial de un solo tono (mas oscuro = mejor score) en vez de
 # colores categoricos sin relacion entre si -- ver gold_schema.yml.
 ORDEN_BANDAS = ["Bajo", "Regular", "Bueno", "Muy bueno", "Excelente"]
-COLOR_BANDAS = {
-    "Bajo": "#86b6ef",
-    "Regular": "#5598e7",
-    "Bueno": "#2a78d6",
-    "Muy bueno": "#1c5cab",
-    "Excelente": "#104281",
-}
-COLOR_RIESGO = {"Alto": "#d03b3b", "Bajo": "#0ca30c"}  # mismo par que 'nivel': es un status
+COLOR_BANDAS = dict(zip(ORDEN_BANDAS, tema.SECUENCIAL))
+COLOR_RIESGO = {"Alto": tema.ROJO, "Bajo": tema.VERDE}  # mismo par que 'nivel': es un status
 
 # Vista 4: 'estado' de un KPI es un status (mismo verde/rojo de siempre);
 # INFO = KPI sin umbral, solo informativo.
-COLOR_ESTADO_KPI = {"OK": "#0ca30c", "ALERTA": "#d03b3b", "INFO": TEXTO_SECUNDARIO}
+COLOR_ESTADO_KPI = {"OK": tema.VERDE, "ALERTA": tema.ROJO, "INFO": tema.GRIS}
 # Semaforo del indice de riesgo consolidado: es un status ordenado
-# (verde -> amarillo -> rojo), no categorias sin relacion.
+# (verde -> ambar -> rojo), no categorias sin relacion.
 ORDEN_SEMAFORO = ["Bajo", "Medio", "Alto"]
-COLOR_SEMAFORO = {"Bajo": "#0ca30c", "Medio": "#e6a700", "Alto": "#d03b3b"}
+COLOR_SEMAFORO = {"Bajo": tema.VERDE, "Medio": tema.AMBAR, "Alto": tema.ROJO}
 # Exposicion vs perdida esperada: dos medidas distintas en la misma
-# unidad (USD) -> categoricos slot 1 y slot 2.
-COLOR_MEDIDA_USD = {"Exposicion": "#3987e5", "Perdida esperada": "#d95926"}
+# unidad (USD) -> categoricos slot 1 y slot 3.
+COLOR_MEDIDA_USD = {"Exposicion": tema.MEDIO, "Perdida esperada": tema.NARANJA}
 ORDEN_PERFIL_AHORRO = ["Deficitario", "Equilibrado", "Ahorrador", "Sin ingreso"]
 COLOR_PERFIL_AHORRO = {
-    "Deficitario": "#d03b3b",
-    "Equilibrado": "#c3c2b7",
-    "Ahorrador": "#0ca30c",
-    "Sin ingreso": "#383835",
+    "Deficitario": tema.ROJO,
+    "Equilibrado": "#B8C2CE",
+    "Ahorrador": tema.VERDE,
+    "Sin ingreso": "#5B6878",
 }
+# Nombre legible de cada KPI (las llaves son los ids de kpis_financieros.py)
+NOMBRE_KPI = {
+    "capacidad_ahorro_mediana_pct": "Capacidad de ahorro (mediana)",
+    "capacidad_ahorro_ic95_inf_pct": "Capacidad de ahorro · IC 95% inferior",
+    "capacidad_ahorro_ic95_sup_pct": "Capacidad de ahorro · IC 95% superior",
+    "endeudamiento_mensual_mediana_pct": "Endeudamiento mensual (mediana)",
+    "pct_clientes_endeudamiento_alto": "Clientes con endeudamiento alto",
+    "varianza_ingresos_gastos": "Varianza ingresos vs. gastos",
+    "cv_ingreso_6m_pct": "Variación del ingreso (6 meses)",
+    "cv_gasto_6m_pct": "Variación del gasto (6 meses)",
+    "indice_riesgo_consolidado_promedio": "Índice de riesgo consolidado",
+    "pct_clientes_semaforo_bajo": "Clientes en verde",
+    "pct_clientes_semaforo_medio": "Clientes en amarillo",
+    "pct_clientes_semaforo_alto": "Clientes en rojo",
+    "tasa_incumplimiento_historica_pct": "Incumplimiento histórico",
+    "probabilidad_incumplimiento_promedio_pct": "Probabilidad de impago promedio",
+    "pct_clientes_riesgo_alto": "Clientes de riesgo alto",
+    "credit_score_promedio": "Credit score promedio",
+    "pct_clientes_subprime": "Clientes subprime",
+    "dti_mediana": "Deuda / ingreso (mediana)",
+    "auc_modelo_riesgo": "AUC del modelo de riesgo",
+    "num_prestamos_activos": "Préstamos activos",
+    "pct_clientes_con_prestamo": "Clientes con préstamo",
+    "exposicion_total_usd": "Exposición total",
+    "exposicion_promedio_usd": "Exposición promedio",
+    "exposicion_riesgo_alto_usd": "Exposición en riesgo alto",
+    "pct_exposicion_riesgo_alto": "% de exposición en riesgo alto",
+    "perdida_esperada_usd": "Pérdida esperada",
+    "perdida_esperada_pct_exposicion": "Pérdida esperada / exposición",
+    "indice_concentracion_region_hhi": "Concentración por región (HHI)",
+    "pct_exposicion_region_principal": "Exposición en la región principal",
+    "ingreso_mensual_promedio_usd": "Ingreso mensual promedio",
+    "gasto_mensual_promedio_usd": "Gasto mensual promedio",
+    "ratio_gasto_ingreso_mediana": "Gasto / ingreso (mediana)",
+    "tasa_ahorro_mediana_pct": "Tasa de ahorro (mediana)",
+    "flujo_libre_mensual_mediana_usd": "Flujo libre mensual (mediana)",
+    "pct_clientes_deficitarios": "Clientes deficitarios",
+    "meses_cobertura_ahorro_mediana": "Meses cubiertos con ahorro",
+    "pct_clientes_sin_colchon": "Clientes sin fondo de emergencia",
+}
+
+
+def _nombre_kpi(kpi: str) -> str:
+    return NOMBRE_KPI.get(kpi, kpi.replace("_", " ").capitalize())
+
+
 TITULOS_CATEGORIA_KPI = {
     "kpis_negocio": "KPIs de negocio",
     "riesgo_financiero": "Riesgo financiero",
-    "exposicion": "Exposicion",
+    "exposicion": "Exposición",
     "comportamiento_transaccional": "Comportamiento transaccional",
 }
 
-st.set_page_config(page_title="Gemelo Digital Financiero - Dashboard", layout="wide")
-
-st.title("Dashboard técnico - Gemelo Digital Financiero")
+tema.configurar_pagina("Dashboard técnico", ancho_max=1320)
+tema.encabezado(
+    "Dashboard técnico", eyebrow="Gemelo Digital Financiero · Plataforma de datos",
+    subtitulo="Observabilidad, calidad de datos, riesgo de crédito, KPIs y modelo de IA en un solo lugar.",
+    meta_html="Arquitectura Medallion<br><b>Bronze → Silver → Gold</b>",
+)
 
 
 # --- Cache de datos ---
@@ -148,21 +193,10 @@ def _gold_kpis_segmento_cacheados() -> pd.DataFrame:
     return cargar_gold_kpis_segmento()
 
 
-def _tema_oscuro(fig, mostrar_leyenda: bool = True):
-    """Aplica el mismo fondo/tipografia que el resto de la app a una figura
-    de Plotly. Sin esto, Plotly deja fondo blanco por default y se ve como
-    una caja pegada encima de la interfaz oscura de Streamlit."""
-    fig.update_layout(
-        plot_bgcolor=SURFACE,
-        paper_bgcolor=SURFACE,
-        font_color=TEXTO_SECUNDARIO,
-        legend_title_text="",
-        showlegend=mostrar_leyenda,
-        margin=dict(t=10, b=10, l=10, r=10),
-    )
-    fig.update_xaxes(gridcolor=GRIDLINE, linecolor=BASELINE, zerolinecolor=BASELINE)
-    fig.update_yaxes(gridcolor=GRIDLINE, linecolor=BASELINE, zerolinecolor=BASELINE)
-    return fig
+def _estilo(fig, mostrar_leyenda: bool = True):
+    """Mismo fondo, tipografia, rejilla y colores que el resto de los tableros
+    (tema BBVA). Sin esto, Plotly usa su estilo por default."""
+    return tema.estilo_plotly(fig, mostrar_leyenda=mostrar_leyenda)
 
 
 # ---------------------------------------------------------------------------
@@ -171,13 +205,14 @@ def _tema_oscuro(fig, mostrar_leyenda: bool = True):
 # Estado de un SLA / de la plataforma: paleta de status (icono + texto,
 # nunca solo color). Estado de una corrida de Airflow: tambien es status.
 ICONO_SLA = {obs.OK: "✓", obs.ALERTA: "!", obs.SIN_DATOS: "–"}
-COLOR_SLA = {obs.OK: "#0ca30c", obs.ALERTA: "#d03b3b", obs.SIN_DATOS: TEXTO_SECUNDARIO}
+COLOR_SLA = {obs.OK: tema.VERDE, obs.ALERTA: tema.ROJO, obs.SIN_DATOS: tema.GRIS}
 TEXTO_SLA = {obs.OK: "Cumple", obs.ALERTA: "No cumple", obs.SIN_DATOS: "Sin datos"}
-COLOR_GENERAL = {"Saludable": "#0ca30c", "Requiere atención": "#e6a700", "Crítico": "#d03b3b",
-                 "Sin datos": TEXTO_SECUNDARIO}
+COLOR_GENERAL = {"Saludable": tema.VERDE, "Requiere atención": tema.AMBAR, "Crítico": tema.ROJO,
+                 "Sin datos": tema.GRIS}
 ICONO_GENERAL = {"Saludable": "✓", "Requiere atención": "!", "Crítico": "✕", "Sin datos": "–"}
-COLOR_CORRIDA = {"success": "#0ca30c", "failed": "#d03b3b", "running": COLOR_SERIE_PRINCIPAL,
-                 "queued": TEXTO_SECUNDARIO, "upstream_failed": "#e6a700"}
+COLOR_CORRIDA = {"success": tema.VERDE, "failed": tema.ROJO, "running": COLOR_SERIE_PRINCIPAL,
+                 "queued": tema.GRIS, "upstream_failed": tema.AMBAR}
+SIMBOLO_OPERADOR = {">=": "≥", "<=": "≤"}
 NOMBRE_ESTADO_CORRIDA = {"success": "Exitosa", "failed": "Fallida", "running": "En curso", "queued": "En cola"}
 
 
@@ -204,27 +239,28 @@ def _cargar_observabilidad() -> tuple[dict, dict, pd.Timestamp]:
 def _tarjeta_sla(s: pd.Series) -> str:
     color = COLOR_SLA[s["estado"]]
     valor = obs._fmt(s["valor"], s["unidad"])
-    meta = f"meta {s['operador']} {obs._fmt(s['meta'], s['unidad'])}"
-    # Texto con el color del tema (claro u oscuro) y opacidad para lo secundario: un color fijo
-    # (blanco) desaparece si el navegador usa el tema claro.
-    nota = f"<br><span style='opacity:0.7;font-size:0.75rem'>{s['detalle']}</span>" if s["detalle"] else ""
+    meta = f"Meta {SIMBOLO_OPERADOR.get(s['operador'], s['operador'])} {obs._fmt(s['meta'], s['unidad'])}"
+    nota = (f"<div style='color:{tema.TEXTO_3};font-size:0.75rem;margin-top:6px'>{s['detalle']}</div>"
+            if s["detalle"] else "")
     return (
-        f"<div style='border:1px solid rgba(128,128,128,0.35);border-left:5px solid {color};border-radius:8px;"
-        f"padding:10px 12px;margin-bottom:10px;min-height:118px'>"
-        f"<div style='font-size:0.8rem;opacity:0.75'>{s['nombre']}</div>"
-        f"<div style='font-size:1.6rem;font-weight:600;font-variant-numeric:tabular-nums'>{valor}</div>"
-        f"<div style='font-size:0.8rem;opacity:0.75'>{meta}</div>"
-        f"<div style='font-size:0.8rem;color:{color};font-weight:600'>{ICONO_SLA[s['estado']]} {TEXTO_SLA[s['estado']]}</div>"
+        f"<div style='background:{tema.SUPERFICIE};border:1px solid {tema.LINEA};border-top:4px solid {color};"
+        f"border-radius:12px;padding:14px 16px;margin-bottom:12px;min-height:150px;box-shadow:0 1px 2px rgba(7,33,70,0.04)'>"
+        f"<div style='display:flex;justify-content:space-between;align-items:flex-start;gap:8px'>"
+        f"<div style='font-size:0.74rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:{tema.TEXTO_2}'>"
+        f"{s['nombre']}</div>{tema.chip(TEXTO_SLA[s['estado']], color, ICONO_SLA[s['estado']])}</div>"
+        f"<div style='font-size:1.7rem;font-weight:600;color:{tema.TEXTO};margin-top:8px;"
+        f"font-variant-numeric:tabular-nums'>{valor}</div>"
+        f"<div style='font-size:0.8rem;color:{tema.TEXTO_2}'>{meta}</div>"
         f"{nota}</div>"
     )
 
 
 def seccion_observabilidad() -> None:
-    st.header("Vista 0 - Observabilidad de la plataforma")
+    tema.seccion("Observabilidad de la plataforma", eyebrow="Vista 0 · Operación", primera=True)
     try:
         entradas, config, ahora = _cargar_observabilidad()
     except FileNotFoundError as error:
-        st.error(f"No se encontro la configuracion de SLA: {error}")
+        st.error(f"No se encontró la configuración de SLA: {error}")
         return
 
     exportacion = entradas.get("exportacion") or {}
@@ -232,14 +268,14 @@ def seccion_observabilidad() -> None:
         generado = pd.Timestamp(exportacion["generado_en"]).tz_convert(ahora.tz)
         minutos = int((ahora - generado).total_seconds() // 60)
         st.caption(
-            f"Metricas operativas, SLA ({config['ventana_dias']} dias) y alertas. Corridas de Airflow exportadas por "
+            f"Métricas operativas, SLA ({config['ventana_dias']} días) y alertas. Corridas de Airflow exportadas por "
             f"monitoreo_dag el {generado:%d/%m %H:%M} (hace {minutos} min); el resto se lee en vivo."
         )
         if minutos > 120:
-            st.warning("La exportacion de Airflow tiene mas de 2 horas: revisa que monitoreo_dag este activo.")
+            st.warning("La exportación de Airflow tiene más de 2 horas: revisa que monitoreo_dag esté activo.")
     else:
         st.info(
-            "Todavia no hay metricas de Airflow. Activa **monitoreo_dag** en Airflow (corre cada hora) o "
+            "Todavía no hay métricas de Airflow. Activa **monitoreo_dag** en Airflow (corre cada hora) o "
             "disparalo a mano; mientras tanto se muestran los SLA que no dependen de Airflow."
         )
 
@@ -253,14 +289,14 @@ def seccion_observabilidad() -> None:
     recientes = obs.en_ventana(monitoreadas, ahora, config["ventana_dias"]) if not monitoreadas.empty else monitoreadas
     c1, c2, c3, c4 = st.columns(4)
     c1.markdown(
-        f"<div style='font-size:0.85rem;opacity:0.75'>Estado de la plataforma</div>"
+        f"<div style='font-size:0.8rem;font-weight:600;color:{tema.TEXTO_2}'>Estado de la plataforma</div>"
         f"<div style='font-size:1.6rem;font-weight:700;color:{COLOR_GENERAL[general]}'>"
         f"{ICONO_GENERAL[general]} {general}</div>", unsafe_allow_html=True)
     con_datos = slas[slas["estado"] != obs.SIN_DATOS]
     c2.metric("SLA cumplidos", f"{int((slas['estado'] == obs.OK).sum())} de {len(con_datos)}",
               help="Solo cuentan los SLA con datos suficientes.")
     c3.metric("Alertas abiertas", len(alertas))
-    c4.metric(f"Corridas ({config['ventana_dias']} dias)", len(recientes))
+    c4.metric(f"Corridas ({config['ventana_dias']} días)", len(recientes))
 
     # --- SLA ---
     st.subheader("Acuerdos de nivel de servicio (SLA)")
@@ -268,12 +304,12 @@ def seccion_observabilidad() -> None:
         columnas = st.columns(4)
         for columna, (_, s) in zip(columnas, slas.iloc[inicio:inicio + 4].iterrows()):
             columna.markdown(_tarjeta_sla(s), unsafe_allow_html=True)
-    with st.expander("¿Como se mide cada SLA?"):
+    with st.expander("¿Cómo se mide cada SLA?"):
         st.dataframe(slas[["nombre", "descripcion", "operador", "meta", "unidad", "severidad"]]
-                     .rename(columns={"nombre": "SLA", "descripcion": "Como se mide", "operador": "Regla",
+                     .rename(columns={"nombre": "SLA", "descripcion": "Cómo se mide", "operador": "Regla",
                                       "meta": "Meta", "unidad": "Unidad", "severidad": "Severidad"}),
                      hide_index=True, use_container_width=True)
-        st.caption("Configuracion: config/slas.yml. Los mismos calculos los hace monitoreo_dag, que registra "
+        st.caption("Configuración: config/slas.yml. Los mismos cálculos los hace monitoreo_dag, que registra "
                    "un evento en el log cuando un SLA cambia de estado.")
 
     # --- Alertas ---
@@ -293,7 +329,7 @@ def seccion_observabilidad() -> None:
 
     with tab_corridas:
         if corridas.empty:
-            st.info("Sin corridas exportadas todavia.")
+            st.info("Sin corridas exportadas todavía.")
         else:
             ultimas = corridas[corridas["start_date"] >= ahora - pd.Timedelta(days=3)].copy()
             # En curso -> hasta ahora; fin anterior al inicio (corrida re-ejecutada) -> barra minima
@@ -307,13 +343,13 @@ def seccion_observabilidad() -> None:
                     color_discrete_map=COLOR_CORRIDA,
                     hover_data={"run_id": True, "Estado": True, "duracion_min": ":.1f", "state": False,
                                 "start_date": "|%d/%m %H:%M", "fin": "|%d/%m %H:%M", "dag_id": False},
-                    labels={"dag_id": "", "duracion_min": "Duracion (min)", "start_date": "Inicio", "fin": "Fin"},
+                    labels={"dag_id": "", "duracion_min": "Duración (min)", "start_date": "Inicio", "fin": "Fin"},
                 )
                 fig.for_each_trace(lambda t: t.update(name=NOMBRE_ESTADO_CORRIDA.get(t.name, t.name)))
                 fig.update_yaxes(categoryorder="array", categoryarray=list(reversed(config["dags_monitoreados"])))
                 fig.update_layout(height=280, legend=dict(orientation="h", y=1.12, x=0))
-                st.plotly_chart(_tema_oscuro(fig), use_container_width=True)
-                st.caption("Ultimos 3 dias. Cada barra es una corrida: de cuando empezo a cuando termino.")
+                st.plotly_chart(_estilo(fig), use_container_width=True)
+                st.caption("Últimos 3 días. Cada barra es una corrida: de cuando empezó a cuando terminó.")
             resumen = obs.resumen_por_dag(obs.en_ventana(corridas, ahora, config["ventana_dias"]))
             if not resumen.empty:
                 resumen["ultima_corrida"] = resumen["ultima_corrida"].dt.strftime("%d/%m %H:%M")
@@ -330,7 +366,7 @@ def seccion_observabilidad() -> None:
         if exitosas.empty:
             st.info("Sin corridas exitosas para graficar.")
         else:
-            st.markdown("**Duracion de las corridas exitosas (minutos)**")
+            st.markdown("**Duración de las corridas exitosas (minutos)**")
             fig = px.line(exitosas.sort_values("start_date"), x="start_date", y="duracion_min",
                           facet_col="dag_id", facet_col_wrap=1, facet_row_spacing=0.12, markers=True,
                           labels={"start_date": "", "duracion_min": "min"},
@@ -344,15 +380,15 @@ def seccion_observabilidad() -> None:
             fig.update_yaxes(matches=None, title="", showticklabels=True, type="log")
             fig.update_xaxes(showticklabels=True)
             fig.update_layout(height=150 * exitosas["dag_id"].nunique() + 40, margin=dict(t=30, b=10, l=10, r=10))
-            st.plotly_chart(_tema_oscuro(fig, mostrar_leyenda=False), use_container_width=True)
-            st.caption("Un panel por DAG, en escala logaritmica (cada linea de la cuadricula es x10): lo que importa "
-                       "es si la duracion crece. Un pico aislado suele ser una corrida interrumpida (laptop suspendida).")
+            st.plotly_chart(_estilo(fig, mostrar_leyenda=False), use_container_width=True)
+            st.caption("Un panel por DAG, en escala logarítmica (cada línea de la cuadrícula es x10): lo que importa "
+                       "es si la duración crece. Un pico aislado suele ser una corrida interrumpida (laptop suspendida).")
 
             sla_frescura = next(s for s in config["slas"] if s["metrica"] == "frescura_gold_pct")
             frescura = obs.frescura_por_dia(corridas, "transformacion_gold_dag", sla_frescura["hora_limite"],
                                             ahora, config["historial_dias"])
             if not frescura.empty:
-                st.markdown(f"**Frescura: ¿Gold listo antes de las {sla_frescura['hora_limite']} del dia siguiente?**")
+                st.markdown(f"**Frescura: ¿Gold listo antes de las {sla_frescura['hora_limite']} del día siguiente?**")
                 tabla = pd.DataFrame({
                     "Particion": frescura["particion"].dt.strftime("%Y-%m-%d"),
                     "Listo": frescura["listo_en"].apply(lambda t: "No corrio" if pd.isna(t) else f"{t:%d/%m %H:%M}"),
@@ -376,45 +412,45 @@ def seccion_observabilidad() -> None:
             fig.add_vline(x=sla_calidad["meta"], line_dash="dot", line_color=TEXTO_SECUNDARIO,
                           annotation_text=f"Meta {sla_calidad['meta']}%", annotation_font_color=TEXTO_SECUNDARIO)
             fig.update_layout(height=60 * len(ultimos) + 80, xaxis_range=[0, 105])
-            st.markdown("**Calidad de Silver: ultimo reporte de cada fuente**")
-            st.plotly_chart(_tema_oscuro(fig, mostrar_leyenda=False), use_container_width=True)
+            st.markdown("**Calidad de Silver: último reporte de cada fuente**")
+            st.plotly_chart(_estilo(fig, mostrar_leyenda=False), use_container_width=True)
         historial = _historial_modelos_obs()
         if not historial.empty:
             ultimo = historial.iloc[0]
             m1, m2, m3 = st.columns(3)
-            m1.metric("Ultimo entrenamiento", str(ultimo["entrenado_en"])[:16].replace("T", " "))
+            m1.metric("Último entrenamiento", str(ultimo["entrenado_en"])[:16].replace("T", " "))
             m2.metric("Versiones entrenadas", len(historial))
-            m3.metric("AUC de la ultima version", f"{ultimo['auc']:.3f}" if pd.notna(ultimo["auc"]) else "N/D")
+            m3.metric("AUC de la última versión", f"{ultimo['auc']:.3f}" if pd.notna(ultimo["auc"]) else "N/D")
 
     with tab_asistente:
         metricas = obs.metricas_asistente(entradas["asistente_log"], ahora, config["ventana_dias"])
         evaluacion = entradas["evaluacion"]
         evaluacion_asesor = entradas.get("evaluacion_asesor") or {}
         if metricas["preguntas"] == 0 and not evaluacion and not evaluacion_asesor:
-            st.info("Todavia no hay preguntas registradas ni evaluaciones del asistente.")
+            st.info("Todavía no hay preguntas registradas ni evaluaciones del asistente.")
         if metricas["preguntas"]:
             canales = metricas.get("por_canal", {})
             a1, a2, a3, a4 = st.columns(4)
-            a1.metric(f"Preguntas ({config['ventana_dias']} dias)", metricas["preguntas"],
+            a1.metric(f"Preguntas ({config['ventana_dias']} días)", metricas["preguntas"],
                       help=f"Ejecutivos: {canales.get('ejecutivo', 0)} · Clientes (asesor): {canales.get('cliente', 0)} · "
                            f"Derivadas a una persona (fraude, privacidad): {metricas.get('derivadas', 0)}")
             a2.metric("Redactadas por la IA", f"{metricas['pct_ia']:.0f}%",
-                      help=f"Respaldo (datos exactos): {metricas['pct_respaldo']:.0f}% · Modo basico: {metricas['pct_basico']:.0f}%")
-            a3.metric("Tiempo tipico", f"{metricas['segundos_mediana']:.0f} s")
+                      help=f"Respaldo (datos exactos): {metricas['pct_respaldo']:.0f}% · Modo básico: {metricas['pct_basico']:.0f}%")
+            a3.metric("Tiempo típico", f"{metricas['segundos_mediana']:.0f} s")
             a4.metric("Tiempo p95", f"{metricas['segundos_p95']:.0f} s")
         if evaluacion:
             st.markdown(
-                f"**Ultima evaluacion automatica** ({evaluacion.get('modelo', '')}, "
+                f"**Última evaluación automática** ({evaluacion.get('modelo', '')}, "
                 f"{str(evaluacion.get('evaluado_en', ''))[:16].replace('T', ' ')}): "
-                f"exito final **{evaluacion.get('exito_final_pct')}%**, veracidad final "
+                f"éxito final **{evaluacion.get('exito_final_pct')}%**, veracidad final "
                 f"**{evaluacion.get('veracidad_final_pct')}%**, {evaluacion.get('preguntas')} preguntas "
                 f"(meta {evaluacion.get('meta_pct', 84)}%)."
             )
         if evaluacion_asesor:
             st.markdown(
-                f"**Ultima evaluacion del asesor del cliente** ({evaluacion_asesor.get('modelo', '')}, "
+                f"**Última evaluación del asesor del cliente** ({evaluacion_asesor.get('modelo', '')}, "
                 f"{str(evaluacion_asesor.get('evaluado_en', ''))[:16].replace('T', ' ')}): "
-                f"exito final **{evaluacion_asesor.get('exito_final_pct')}%**, veracidad final "
+                f"éxito final **{evaluacion_asesor.get('exito_final_pct')}%**, veracidad final "
                 f"**{evaluacion_asesor.get('veracidad_final_pct')}%**, {evaluacion_asesor.get('preguntas')} preguntas "
                 f"(meta {evaluacion_asesor.get('meta_pct', 84)}%)."
             )
@@ -423,7 +459,7 @@ def seccion_observabilidad() -> None:
             log = log.assign(_t=pd.to_datetime(log["timestamp"], utc=True, format="ISO8601"))
             recientes_log = log.sort_values("_t", ascending=False).head(10)
             columnas = [c for c in ["timestamp", "canal", "pregunta", "modo", "segundos", "reintentos"] if c in recientes_log.columns]
-            st.markdown("**Ultimas preguntas**")
+            st.markdown("**Últimas preguntas**")
             st.dataframe(recientes_log[columnas].assign(
                 timestamp=pd.to_datetime(recientes_log["timestamp"], utc=True, format="ISO8601")
                 .dt.tz_convert(ahora.tz).dt.strftime("%d/%m %H:%M")),
@@ -434,7 +470,7 @@ def seccion_observabilidad() -> None:
 # 1) Chequeo de configuracion (Paso 2)
 # ---------------------------------------------------------------------------
 def seccion_chequeo_configuracion() -> None:
-    with st.expander("Chequeo de configuracion", expanded=False):
+    with st.expander("Chequeo de configuración", expanded=False):
         minio_endpoint = os.getenv("MINIO_ENDPOINT", "NO DEFINIDA")
         minio_bucket = os.getenv("SILVER_BUCKET", "NO DEFINIDA")
 
@@ -453,19 +489,19 @@ def seccion_chequeo_configuracion() -> None:
 # 2) Vista 1: Salud de la malla (Paso 4)
 # ---------------------------------------------------------------------------
 def seccion_salud_malla() -> None:
-    st.header("Vista 1 - Salud de la malla")
+    tema.seccion("Salud de la malla", eyebrow="Vista 1 · Pipelines", primera=True)
     st.caption(
-        "De donde sale esto: cada tarea de tus DAGs (ingesta_bronze_dag y "
+        "¿De dónde sale esto? cada tarea de tus DAGs (ingesta_bronze_dag y "
         "transformacion_silver_dag) escribe un evento en pipeline_log.jsonl "
-        "cuando corre. Aqui se cuentan esos eventos."
+        "cuando corre. Aquí se cuentan esos eventos."
     )
 
     eventos = _eventos_cacheados().copy()
 
     if eventos.empty:
         st.info(
-            "Todavia no hay eventos registrados. Corre un backfill de "
-            "transformacion_silver_dag para ver datos aqui."
+            "Todavía no hay eventos registrados. Corre un backfill de "
+            "transformacion_silver_dag para ver datos aquí."
         )
         return
 
@@ -486,7 +522,7 @@ def seccion_salud_malla() -> None:
             eventos.loc[eventos["nivel"].isin(valores_inesperados), "nivel"] = "OTRO"
             st.caption(
                 f"Nota: se encontraron valores de 'nivel' distintos a INFO/ALERTA "
-                f"({', '.join(sorted(valores_inesperados))}), agrupados aqui como 'OTRO'."
+                f"({', '.join(sorted(valores_inesperados))}), agrupados aquí como 'OTRO'."
             )
 
     # --- KPIs (numeros grandes, primero, para responder rapido "vamos bien?") ---
@@ -496,7 +532,7 @@ def seccion_salud_malla() -> None:
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Eventos totales", f"{total_eventos:,}")
-    col2.metric("Tasa de exito", f"{tasa_exito}%")
+    col2.metric("Tasa de éxito", f"{tasa_exito}%")
     col3.metric("Eventos en ALERTA", eventos_alerta)
 
     # --- Eventos por dia, coloreados por nivel (INFO vs ALERTA) ---
@@ -521,7 +557,7 @@ def seccion_salud_malla() -> None:
             barmode="stack",
             labels={"fecha": "Fecha", "conteo": "Eventos", "nivel": "Nivel"},
         )
-        st.plotly_chart(_tema_oscuro(fig), use_container_width=True)
+        st.plotly_chart(_estilo(fig), use_container_width=True)
 
     # --- Eventos por tarea (que tarea corre mas / cual genera mas alertas) ---
     if "task" in eventos.columns:
@@ -541,11 +577,11 @@ def seccion_salud_malla() -> None:
             textposition="outside",
             textfont_color=TEXTO_PRIMARIO,
         )
-        st.plotly_chart(_tema_oscuro(fig_tareas, mostrar_leyenda=False), use_container_width=True)
+        st.plotly_chart(_estilo(fig_tareas, mostrar_leyenda=False), use_container_width=True)
 
     # --- Tabla de las alertas mas recientes (para saber que revisar primero) ---
     if eventos_alerta:
-        st.subheader("Ultimas alertas")
+        st.subheader("Últimas alertas")
         columnas_disponibles = [
             c for c in ["timestamp", "task", "fuente", "particion"] if c in eventos.columns
         ]
@@ -561,9 +597,9 @@ def seccion_salud_malla() -> None:
 # 3) Vista 2: Calidad de datos (Paso 5)
 # ---------------------------------------------------------------------------
 def seccion_calidad_datos() -> None:
-    st.header("Vista 2 - Calidad de datos")
+    tema.seccion("Calidad de datos", eyebrow="Vista 2 · Great Expectations", primera=True)
     st.caption(
-        "De donde sale esto: cada particion (fuente + fecha) que pasa por "
+        "¿De dónde sale esto? cada partición (fuente + fecha) que pasa por "
         "transformacion_silver_dag genera un _calidad_reporte.json en MinIO, "
         "con el resultado de las expectativas de Great Expectations definidas "
         "en config/silver_schema.yml."
@@ -573,8 +609,8 @@ def seccion_calidad_datos() -> None:
 
     if reportes.empty:
         st.info(
-            "Todavia no hay reportes de calidad en MinIO. Corre un backfill "
-            "de transformacion_silver_dag para ver datos aqui."
+            "Todavía no hay reportes de calidad en MinIO. Corre un backfill "
+            "de transformacion_silver_dag para ver datos aquí."
         )
         return
 
@@ -600,7 +636,7 @@ def seccion_calidad_datos() -> None:
         barmode="group",
         color_discrete_map=COLOR_FUENTE,
         labels={
-            "fecha": "Particion (fecha)",
+            "fecha": "Partición (fecha)",
             "porcentaje_calidad": "% expectativas cumplidas",
             "fuente": "Fuente",
         },
@@ -613,7 +649,7 @@ def seccion_calidad_datos() -> None:
         annotation_text=f"Umbral {UMBRAL_CALIDAD_OK}%",
         annotation_font_color=TEXTO_SECUNDARIO,
     )
-    st.plotly_chart(_tema_oscuro(fig), use_container_width=True)
+    st.plotly_chart(_estilo(fig), use_container_width=True)
 
     # --- Detalle de particiones con fallas (para saber que revisar primero) ---
     st.subheader("Particiones con expectativas fallidas")
@@ -638,9 +674,9 @@ def seccion_calidad_datos() -> None:
 # 4) Vista 3: Riesgo de credito (Semana 11, capa Gold)
 # ---------------------------------------------------------------------------
 def seccion_riesgo_credito() -> None:
-    st.header("Vista 3 - Riesgo de credito (Gold)")
+    tema.seccion("Riesgo de crédito", eyebrow="Vista 3 · Capa Gold", primera=True)
     st.caption(
-        "De donde sale esto: transformacion_gold_dag entrena un modelo "
+        "¿De dónde sale esto? transformacion_gold_dag entrena un modelo "
         "sobre loan_default_risk y califica a cada cliente de "
         "personal_finance_ml. Ver config/gold_schema.yml para el diseno "
         "completo (por que estas 2 variables, por que se excluyo la 3ra)."
@@ -652,8 +688,8 @@ def seccion_riesgo_credito() -> None:
 
     if metadata.empty or df_segmento.empty:
         st.info(
-            "Todavia no hay tablas Gold. Corre un backfill de "
-            "transformacion_gold_dag para ver datos aqui."
+            "Todavía no hay tablas Gold. Corre un backfill de "
+            "transformacion_gold_dag para ver datos aquí."
         )
         return
 
@@ -711,7 +747,7 @@ def seccion_riesgo_credito() -> None:
     )
     fig_banda.update_traces(marker_color=COLOR_BANDAS["Excelente"], textposition="outside")
     fig_banda.update_yaxes(range=[0, max(60, riesgo_por_banda["riesgo_alto_ponderado"].max() * 1.2)])
-    st.plotly_chart(_tema_oscuro(fig_banda, mostrar_leyenda=False), use_container_width=True)
+    st.plotly_chart(_estilo(fig_banda, mostrar_leyenda=False), use_container_width=True)
 
     # --- Distribucion de clientes por region, segmentada por banda ---
     fig_region = px.bar(
@@ -722,16 +758,26 @@ def seccion_riesgo_credito() -> None:
         category_orders={"rango_credit_score": ORDEN_BANDAS},
         color_discrete_map=COLOR_BANDAS,
         barmode="stack",
-        labels={"region": "Region", "num_clientes": "Clientes", "rango_credit_score": "Banda"},
+        labels={"region": "Región", "num_clientes": "Clientes", "rango_credit_score": "Banda"},
     )
-    st.plotly_chart(_tema_oscuro(fig_region), use_container_width=True)
+    st.plotly_chart(_estilo(fig_region), use_container_width=True)
 
     # --- Top 10 clientes de mayor riesgo (para saber a quien revisar primero) ---
     if not df_clientes.empty:
         st.subheader("Top 10 clientes de mayor riesgo")
         columnas = ["user_id", "region", "credit_score", "loan_amount_usd", "riesgo_score", "riesgo_flag"]
         top_riesgo = df_clientes.sort_values("riesgo_score", ascending=False).head(10)
-        st.dataframe(top_riesgo[columnas], use_container_width=True, hide_index=True)
+        st.dataframe(
+            top_riesgo[columnas], use_container_width=True, hide_index=True,
+            column_config={
+                "user_id": "Cliente", "region": "Región",
+                "credit_score": st.column_config.NumberColumn("Credit score", format="%d"),
+                "loan_amount_usd": st.column_config.NumberColumn("Préstamo (USD)", format="$%.0f"),
+                "riesgo_score": st.column_config.ProgressColumn("Probabilidad de impago", min_value=0, max_value=1,
+                                                                format="%.2f"),
+                "riesgo_flag": "Nivel de riesgo",
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -758,9 +804,9 @@ def _formatear_kpi(valor, unidad: str) -> str:
 
 
 def seccion_kpis_financieros() -> None:
-    st.header("Vista 4 - KPIs financieros (Gold)")
+    tema.seccion("KPIs financieros", eyebrow="Vista 4 · Capa Gold", primera=True)
     st.caption(
-        "De donde sale esto: la tarea calcular_kpis de transformacion_gold_dag "
+        "¿De dónde sale esto? la tarea calcular_kpis de transformacion_gold_dag "
         "agrega fact_posicion_financiera (modelo estrella de Gold) en tres "
         "familias de KPIs. Formulas y umbrales en config/gold_schema.yml, "
         "seccion metricas_financieras."
@@ -771,47 +817,47 @@ def seccion_kpis_financieros() -> None:
 
     if kpis.empty:
         st.info(
-            "Todavia no hay KPIs en Gold. Corre transformacion_gold_dag "
-            "(tarea calcular_kpis) para ver datos aqui."
+            "Todavía no hay KPIs en Gold. Corre transformacion_gold_dag "
+            "(tarea calcular_kpis) para ver datos aquí."
         )
         return
 
     fechas = sorted(kpis["fecha"].unique(), reverse=True)
-    fecha = st.selectbox("Particion", fechas, index=0, key="fecha_kpis")
+    fecha = st.selectbox("Partición", fechas, index=0, key="fecha_kpis")
     kpis_fecha = kpis[kpis["fecha"] == fecha]
 
     # --- Semaforo: primero lo que requiere accion ---
     en_alerta = kpis_fecha[kpis_fecha["estado"] == "ALERTA"]
     con_umbral = kpis_fecha[kpis_fecha["estado"].isin(["OK", "ALERTA"])]
     if en_alerta.empty:
-        st.success(f"Los {len(con_umbral)} KPIs con umbral estan dentro de rango.")
+        st.success(f"Los {len(con_umbral)} KPIs con umbral están dentro de rango.")
     else:
         st.warning(
-            f"{len(en_alerta)} de {len(con_umbral)} KPIs con umbral estan en ALERTA: "
-            + ", ".join(en_alerta["kpi"].tolist())
+            f"{len(en_alerta)} de {len(con_umbral)} KPIs con umbral están en ALERTA: "
+            + ", ".join(_nombre_kpi(k) for k in en_alerta["kpi"])
         )
 
     # --- Numeros grandes por familia ---
     # El delta muestra la distancia al umbral (no un cambio vs. ayer):
     # rojo = del lado malo del umbral, verde = del lado bueno.
     for categoria, titulo in TITULOS_CATEGORIA_KPI.items():
-        st.subheader(titulo)
+        st.markdown(f"### {titulo}")
         del_grupo = kpis_fecha[kpis_fecha["categoria"] == categoria]
         columnas = st.columns(4)
         for i, fila in enumerate(del_grupo.itertuples()):
             delta = None
             if fila.estado in ("OK", "ALERTA") and pd.notna(fila.umbral):
-                avance = getattr(fila, "avance_meta_pct", None)
-                avance_txt = f" · {avance:.0f}% de la meta" if avance is not None and pd.notna(avance) else ""
-                delta = f"{'fuera de' if fila.estado == 'ALERTA' else 'dentro de'} meta ({_formatear_kpi(fila.umbral, fila.unidad)}){avance_txt}"
+                delta = f"{'Fuera de' if fila.estado == 'ALERTA' else 'Dentro de'} meta ({_formatear_kpi(fila.umbral, fila.unidad)})"
             elif fila.estado == "SIN_DATOS":
-                delta = "sin datos - ver ayuda (?)"
+                delta = "Sin datos"
+            avance = getattr(fila, "avance_meta_pct", None)
+            ayuda = fila.descripcion + (f" · Avance hacia la meta: {avance:.0f}%" if avance is not None and pd.notna(avance) else "")
             columnas[i % 4].metric(
-                fila.kpi.replace("_", " "),
+                _nombre_kpi(fila.kpi),
                 _formatear_kpi(fila.valor, fila.unidad),
                 delta=delta,
                 delta_color={"ALERTA": "inverse", "SIN_DATOS": "off"}.get(fila.estado, "normal"),
-                help=fila.descripcion,
+                help=ayuda,
             )
 
     if segmentos.empty:
@@ -822,7 +868,7 @@ def seccion_kpis_financieros() -> None:
         (seg_fecha["dimension"] == "nivel_riesgo_consolidado") & seg_fecha["segmento"].isin(ORDEN_SEMAFORO)
     ].copy()
     if not por_semaforo.empty:
-        st.subheader("Semaforo del indice de riesgo consolidado")
+        st.subheader("Semáforo del índice de riesgo consolidado")
         por_semaforo["pct"] = por_semaforo["num_clientes"] / por_semaforo["num_clientes"].sum() * 100
         por_semaforo["cartera"] = "Clientes"
         fig_semaforo = px.bar(
@@ -838,7 +884,7 @@ def seccion_kpis_financieros() -> None:
         )
         fig_semaforo.update_layout(height=180)
         fig_semaforo.update_xaxes(range=[0, 100])
-        st.plotly_chart(_tema_oscuro(fig_semaforo), use_container_width=True)
+        st.plotly_chart(_estilo(fig_semaforo), use_container_width=True)
 
     # --- Exposicion vs perdida esperada por region ---
     # Barras agrupadas: misma unidad (USD), se compara cuanto de lo
@@ -852,7 +898,7 @@ def seccion_kpis_financieros() -> None:
     por_region["medida"] = por_region["medida"].map(
         {"exposicion_usd": "Exposicion", "perdida_esperada_usd": "Perdida esperada"}
     )
-    st.subheader("Exposicion y perdida esperada por region")
+    st.subheader("Exposición y pérdida esperada por región")
     fig_region = px.bar(
         por_region,
         x="segmento",
@@ -860,9 +906,9 @@ def seccion_kpis_financieros() -> None:
         color="medida",
         barmode="group",
         color_discrete_map=COLOR_MEDIDA_USD,
-        labels={"segmento": "Region", "usd": "USD", "medida": ""},
+        labels={"segmento": "Región", "usd": "USD", "medida": ""},
     )
-    st.plotly_chart(_tema_oscuro(fig_region), use_container_width=True)
+    st.plotly_chart(_estilo(fig_region), use_container_width=True)
 
     # --- Riesgo por banda de credit score (validacion de negocio) ---
     por_banda = seg_fecha[seg_fecha["dimension"] == "rango_credit_score"].copy()
@@ -872,16 +918,16 @@ def seccion_kpis_financieros() -> None:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Perdida esperada / exposicion por banda")
+        st.subheader("Pérdida esperada / exposición por banda")
         fig_banda = px.bar(
             por_banda,
             x="segmento",
             y="perdida_esperada_pct_exposicion",
             text=por_banda["perdida_esperada_pct_exposicion"].round(1).astype(str) + "%",
-            labels={"segmento": "Banda de credit score", "perdida_esperada_pct_exposicion": "% de la exposicion"},
+            labels={"segmento": "Banda de credit score", "perdida_esperada_pct_exposicion": "% de la exposición"},
         )
         fig_banda.update_traces(marker_color=COLOR_BANDAS["Excelente"], textposition="outside")
-        st.plotly_chart(_tema_oscuro(fig_banda, mostrar_leyenda=False), use_container_width=True)
+        st.plotly_chart(_estilo(fig_banda, mostrar_leyenda=False), use_container_width=True)
 
     # --- Comportamiento transaccional: perfil de ahorro ---
     with col2:
@@ -898,12 +944,12 @@ def seccion_kpis_financieros() -> None:
             labels={"segmento": "Perfil", "num_clientes": "Clientes"},
         )
         fig_perfil.update_traces(textposition="outside")
-        st.plotly_chart(_tema_oscuro(fig_perfil, mostrar_leyenda=False), use_container_width=True)
+        st.plotly_chart(_estilo(fig_perfil, mostrar_leyenda=False), use_container_width=True)
 
     # --- Detalle por segmento (para bajar al "donde") ---
     st.subheader("KPIs por segmento")
     dimension = st.selectbox(
-        "Dimension",
+        "Dimensión",
         sorted(seg_fecha["dimension"].unique()),
         key="dimension_kpis",
     )
@@ -1034,7 +1080,8 @@ def seccion_resumen_ejecutivo() -> None:
         else:
             puntos.append("**KPIs financieros:** todos los KPIs con umbral estan dentro de rango.")
 
-    st.subheader("Resumen ejecutivo")
+    tema.seccion("Resumen de la plataforma", eyebrow="Lectura automática", primera=True,
+                 descripcion="Frases armadas con los mismos números de las gráficas: si algo se degrada, el resumen lo dice solo.")
     for punto in puntos:
         st.markdown(f"- {punto}")
 
@@ -1053,17 +1100,17 @@ def _historial_modelos_cacheado() -> pd.DataFrame:
 
 
 def seccion_modelo_ia() -> None:
-    st.header("Vista 5 - Modelo de riesgo y dataset de IA")
+    tema.seccion("Modelo de riesgo y dataset de IA", eyebrow="Vista 5 · Machine Learning", primera=True)
     st.caption(
-        "De donde sale esto: entrenamiento_modelo_dag construye el dataset de features (S14) y entrena, "
+        "¿De dónde sale esto? entrenamiento_modelo_dag construye el dataset de features (S14) y entrena, "
         "evalua y registra el modelo (S15) en ml-models/riesgo_credito/. Gold solo carga el campeon."
     )
 
     registro = _modelo_campeon_cacheado()
     if not registro:
         st.info(
-            "Todavia no hay un modelo registrado. Descarga credit_risk con scripts/downloadRawData.py, "
-            "corre la malla Bronze/Silver y despues entrenamiento_modelo_dag."
+            "Todavía no hay un modelo registrado. Descarga credit_risk con scripts/downloadRawData.py, "
+            "corre la malla Bronze/Silver y después entrenamiento_modelo_dag."
         )
         return
 
@@ -1097,7 +1144,7 @@ def seccion_modelo_ia() -> None:
     col_a, col_b = st.columns(2)
     # --- Curva de calibracion: prediccion vs realidad por decil ---
     with col_a:
-        st.subheader("Calibracion (prueba)")
+        st.subheader("Calibración (prueba)")
         curva = pd.DataFrame(card.get("candidatos", {}).get(card.get("modelo_elegido"), {}).get("curva_calibracion", []))
         if not curva.empty:
             fig = px.scatter(
@@ -1107,7 +1154,7 @@ def seccion_modelo_ia() -> None:
             fig.update_traces(marker_color=COLOR_SERIE_PRINCIPAL)
             limite = float(max(curva["pd_predicha"].max(), curva["tasa_real"].max()) * 1.05)
             fig.add_shape(type="line", x0=0, y0=0, x1=limite, y1=limite, line=dict(color=TEXTO_SECUNDARIO, dash="dot"))
-            st.plotly_chart(_tema_oscuro(fig, mostrar_leyenda=False), use_container_width=True)
+            st.plotly_chart(_estilo(fig, mostrar_leyenda=False), use_container_width=True)
             st.caption("Sobre la diagonal = el modelo acierta la tasa de impago de cada grupo.")
 
     # --- Coeficientes de la scorecard (que pesa cada variable) ---
@@ -1121,12 +1168,12 @@ def seccion_modelo_ia() -> None:
                 labels={"coeficiente": "Coeficiente sobre WoE (scorecard)", "variable": ""},
             )
             fig_coef.update_traces(marker_color=COLOR_SERIE_PRINCIPAL)
-            st.plotly_chart(_tema_oscuro(fig_coef, mostrar_leyenda=False), use_container_width=True)
+            st.plotly_chart(_estilo(fig_coef, mostrar_leyenda=False), use_container_width=True)
             st.caption("Mayor coeficiente = la variable separa mejor a quien paga de quien no.")
 
     # --- Seleccion de variables (IV) --- a ancho completo y con altura fija:
     # dentro de una columna angosta, Streamlit entra en un ciclo de redibujado.
-    st.subheader("Seleccion de variables (Information Value)")
+    st.subheader("Selección de variables (Information Value)")
     fecha_dataset = (card.get("dataset") or {}).get("fecha")
     reporte = cargar_tabla_particion("reporte_seleccion_variables", fecha_dataset) if fecha_dataset else pd.DataFrame()
     if reporte.empty:
@@ -1147,10 +1194,10 @@ def seccion_modelo_ia() -> None:
         for nombre, auditoria in (card.get("equidad") or {}).items():
             if auditoria:
                 icono = "✓" if auditoria["cumple_regla_4_5"] else "✕"
-                st.markdown(f"{icono} **{nombre.replace('_', ' ')}**: ratio de aprobacion {auditoria['ratio_aprobacion']:.2f}")
-        st.caption("Genero y edad NO son variables del modelo; solo se usan para auditar sesgo.")
+                st.markdown(f"{icono} **{nombre.replace('_', ' ')}**: ratio de aprobación {auditoria['ratio_aprobacion']:.2f}")
+        st.caption("Género y edad NO son variables del modelo; solo se usan para auditar sesgo.")
     with col_e:
-        st.subheader("Cambio de distribucion (PSI)")
+        st.subheader("Cambio de distribución (PSI)")
         psi = (card.get("evaluacion_cartera") or {}).get("psi_sin_alinear", {})
         if psi:
             tabla_psi = pd.DataFrame({"variable": list(psi), "PSI sin alinear": list(psi.values())})
@@ -1172,17 +1219,25 @@ def seccion_modelo_ia() -> None:
 # ---------------------------------------------------------------------------
 # Layout general
 # ---------------------------------------------------------------------------
+pestanas = st.tabs([
+    "Observabilidad", "Resumen", "Salud de la malla", "Calidad de datos",
+    "Riesgo de crédito", "KPIs financieros", "Modelo e IA",
+])
+with pestanas[0]:
+    seccion_observabilidad()
+with pestanas[1]:
+    seccion_resumen_ejecutivo()
+with pestanas[2]:
+    seccion_salud_malla()
+with pestanas[3]:
+    seccion_calidad_datos()
+with pestanas[4]:
+    seccion_riesgo_credito()
+with pestanas[5]:
+    seccion_kpis_financieros()
+with pestanas[6]:
+    seccion_modelo_ia()
+
 seccion_chequeo_configuracion()
-seccion_observabilidad()
-st.divider()
-seccion_resumen_ejecutivo()
-st.divider()
-seccion_salud_malla()
-st.divider()
-seccion_calidad_datos()
-st.divider()
-seccion_riesgo_credito()
-st.divider()
-seccion_kpis_financieros()
-st.divider()
-seccion_modelo_ia()
+tema.pie_de_pagina("Gemelo Digital Financiero · Dashboard técnico · Datos de demostración (datasets públicos), "
+                   "procesados cada día por Airflow, Spark y MinIO.")
