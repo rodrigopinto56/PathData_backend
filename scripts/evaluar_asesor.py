@@ -184,8 +184,15 @@ def main() -> None:
         raise SystemExit(f"Ollama no disponible: {detalle}")
     fecha = args.fecha or sorted(cargar_gold_kpis()["fecha"].unique())[-1]
     clientes = cargar_clientes_particion(fecha)
-    print(f"Evaluando {args.modelo} con la fecha {fecha}... (puede tardar unos minutos)")
-    tabla, resumen = evaluar(clientes, fecha, asis.crear_llm(args.modelo))
+    # El portal carga el modelo al abrirse; aqui igual, para medir el tiempo real
+    # de cada pregunta y no la primera carga (que se reporta aparte).
+    inicio = time.time()
+    ase.calentar_modelo(modelo=args.modelo)
+    carga = round(time.time() - inicio, 1)
+    print(f"Modelo {args.modelo} cargado en memoria en {carga} s.")
+    print(f"Evaluando con la fecha {fecha}... (puede tardar unos minutos)")
+    tabla, resumen = evaluar(clientes, fecha, ase.crear_llm(args.modelo))
+    resumen["segundos_carga_modelo"] = carga
     os.makedirs(os.path.dirname(os.path.abspath(args.salida)), exist_ok=True)
     tabla.to_csv(args.salida, index=False)
     with open(os.path.join(os.path.dirname(os.path.abspath(args.salida)), "evaluacion_asesor.json"), "w") as f:

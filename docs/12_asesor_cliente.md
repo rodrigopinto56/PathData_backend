@@ -107,6 +107,32 @@ sensibles (robo y otro cliente). Mide enrutamiento, veracidad (cifras que existe
 `data/reports/evaluacion_asesor.json` y alimenta el SLA **"Exactitud del asesor del cliente"** de la
 Vista 0. En modo básico (sin IA) el banco da 100%; con IA, mide cuánto se pierde al redactar.
 
+### 6.1 Primera medición con Llama 3.2 y mejoras
+
+| Medición | Preguntas | Enrutamiento | Veracidad final | Éxito final | Tiempo promedio |
+|---|---|---|---|---|---|
+| 1a (19 nov) | 20 | 100% | 100% | **55%** | 20.4 s (la primera, 75 s) |
+
+**Diagnóstico:** ninguna cifra inventada llegó al cliente (veracidad 100%), pero en 9 de 20 respuestas la IA dio
+consejos correctos **sin la cifra que se preguntó**. Un modelo de 3B tiende a responder en general. Además, solo
+hubo 2 clientes de ejemplo (20 preguntas), porque uno de los perfiles "de libro" no existe en los datos reales.
+
+**Mejoras:**
+1. **La cifra principal la escribe el sistema, no la IA.** La respuesta tiene dos partes: el "Dato principal",
+   determinista y exacto, y 2–3 pasos concretos que redacta la IA. La IA aporta lo que hace bien (explicar y
+   aconsejar) y ya no puede omitir el dato. El control de calidad sigue revisando los pasos (cifras, promesas,
+   otros clientes).
+2. **Siempre 3 clientes de ejemplo:** si un perfil "de libro" no existe, se usa el cliente más parecido.
+3. **Velocidad:**
+   - **Calentamiento:** el portal carga el modelo al abrirse, para que la primera pregunta no espere ~1 minuto.
+   - **Modelo en memoria:** se queda cargado 60 min entre preguntas (`keep_alive`).
+   - **Respuestas más cortas:** máximo 220 tokens, solo los pasos.
+   - **Cifra al instante:** se muestra en cuanto se calcula, mientras la IA escribe.
+
+> Nota honesta para el jurado: con este diseño el **éxito** mide que el cliente recibe el dato correcto (lo
+> garantiza el sistema). La calidad de lo que redacta la IA se mide con la **veracidad** y con el
+> porcentaje de respuestas que pasan el control a la primera.
+
 ## 7. Observabilidad
 
 - `asistente_log.jsonl` ahora tiene el campo `canal` (`ejecutivo` / `cliente`). Las líneas antiguas,
@@ -123,7 +149,7 @@ Vista 0. En modo básico (sin IA) el banco da 100%; con IA, mide cuánto se pier
 | `scripts/evaluar_asesor.py` | Banco de 30 preguntas y métricas |
 | `dashboard/cliente.py` | Interfaz del portal (puerto 8503) |
 | `dashboard/data_loader.py` | Agrega `rango_edad` y `tipo_prestamo` al detalle por cliente |
-| `tests/test_asesor_cliente.py` | 53 pruebas, sin Ollama |
+| `tests/test_asesor_cliente.py` | 60 pruebas, sin Ollama |
 | `docker-compose.yml` / `Dockerfile.streamlit` | Servicio `streamlit-cliente` |
 
 ## 9. Limitaciones
