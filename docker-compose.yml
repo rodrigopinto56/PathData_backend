@@ -174,7 +174,7 @@ services:
       context: .
       dockerfile: Dockerfile.streamlit
     container_name: streamlit_ejecutivo
-    command: ["streamlit", "run", "ejecutivo.py", "--server.address=0.0.0.0", "--server.port=8502", "--theme.base=light", "--theme.primaryColor=#072146"]
+    command: ["streamlit", "run", "ejecutivo.py", "--server.address=0.0.0.0", "--server.port=8502"]
     ports:
       - "8502:8502"
     environment:
@@ -207,7 +207,7 @@ services:
       context: .
       dockerfile: Dockerfile.streamlit
     container_name: streamlit_cliente
-    command: ["streamlit", "run", "cliente.py", "--server.address=0.0.0.0", "--server.port=8503", "--theme.base=light", "--theme.primaryColor=#072146"]
+    command: ["streamlit", "run", "cliente.py", "--server.address=0.0.0.0", "--server.port=8503"]
     ports:
       - "8503:8503"
     environment:

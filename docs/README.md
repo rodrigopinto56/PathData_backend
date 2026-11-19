@@ -82,7 +82,10 @@ PathData_backend/
 │   ├── modelo_credito.yml            # S15: parámetros del modelo
 │   ├── simulador.yml                 # S16: escenarios del simulador
 │   └── slas.yml                      # S18: acuerdos de nivel de servicio
-├── dashboard/                    # Streamlit: app.py (técnico, S10–S15) y ejecutivo.py (S13–S17) y cliente.py (S19)
+├── dashboard/                    # Streamlit: app.py (técnico), ejecutivo.py y cliente.py (S19)
+│   ├── tema_bbva.py                  # S19: identidad visual común (paleta BBVA, logo, títulos, gráficas)
+│   ├── assets/                       # S19: logo de BBVA (blanco, navy) e ícono de pestaña
+│   └── .streamlit/config.toml        # S19: tema de Streamlit compartido por los tres tableros
 ├── tests/                        # S12: pruebas unitarias
 ├── pathDataBBVA.py               # S4: exploración y profiling
 ├── docker-compose.yml / Dockerfile / Dockerfile.streamlit
