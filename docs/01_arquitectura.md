@@ -23,6 +23,7 @@ flowchart LR
     M -->|campeón| G
     G --> D[Dashboard técnico<br/>Streamlit :8501]
     G --> E[Dashboard ejecutivo<br/>Streamlit :8502]
+    G --> C[Portal del cliente<br/>Streamlit :8503]
     G -->|publicar_reporte_ejecutivo| H[Reporte HTML diario]
     S --> D
     L[pipeline_log.jsonl] --> D
@@ -41,6 +42,7 @@ flowchart LR
 | `spark-worker` | bitnamilegacy/spark | — | Spark worker |
 | `streamlit` | build `Dockerfile.streamlit` | 8501 | Dashboard técnico |
 | `streamlit-ejecutivo` | build `Dockerfile.streamlit` | 8502 | Dashboard ejecutivo (tema claro) |
+| `streamlit-cliente` | build `Dockerfile.streamlit` | 8503 | Portal del cliente con asesor virtual (S19, ver [12](12_asesor_cliente.md)) |
 
 **Imagen de Airflow (`Dockerfile`)**: parte de `apache/airflow:2.9.3` y agrega Java 17 (lo necesita
 el driver de Spark) y las librerías del pipeline (pandas, pyarrow, s3fs, providers de Amazon y Spark,
@@ -249,6 +251,10 @@ diagnóstico en una frase, los 4 KPIs de negocio explicados con palabras, semáf
 
 La traducción a lenguaje de negocio vive en `scripts/reporte_ejecutivo.py` y la comparten el dashboard y la tarea
 `publicar_reporte_ejecutivo`: el tablero y el reporte diario nunca dicen cosas distintas. Guía de uso: [07](07_guia_dashboard_ejecutivo.md).
+
+### 7.2 Portal del cliente (Semana 19)
+
+`dashboard/cliente.py`, puerto 8503. Otra audiencia más: **un cliente** sin ejecutivo disponible. Ve su salud financiera (4 pilares), un plan de acción con montos, un simulador de recorte de gastos, su lugar frente a personas de su edad y un chat con el asesor virtual (`scripts/asesor_cliente.py`). Ver [12](12_asesor_cliente.md).
 
 `dashboard/data_loader.py` separa la lectura de datos de la interfaz (`app.py`), y los datos se
 cachean 30 s con `st.cache_data`.

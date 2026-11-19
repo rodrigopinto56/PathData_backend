@@ -4,14 +4,14 @@ Backend de datos del proyecto **BBVA Path Data**: un pipeline con **arquitectura
 (Bronze → Silver → Gold) que ingiere datos financieros públicos, los limpia y valida,
 los modela para análisis y calcula KPIs financieros y de negocio, visibles en un dashboard.
 
-Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 18** (observabilidad y hardening).
+Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 19** (portal del cliente con asesor financiero virtual).
 
 ## Contenido
 
 | Documento | Qué responde |
 |---|---|
 | [01 — Arquitectura](01_arquitectura.md) | ¿Cómo está armado el sistema? Componentes, flujo de datos, almacenamiento y DAGs. |
-| [02 — Bitácora semanal (S4–S18)](02_bitacora_semanal.md) | ¿Qué se construyó cada semana, con qué archivos y por qué? |
+| [02 — Bitácora semanal (S4–S19)](02_bitacora_semanal.md) | ¿Qué se construyó cada semana, con qué archivos y por qué? |
 | [03 — Diccionario de datos](03_diccionario_datos.md) | ¿Qué columnas y reglas tiene cada fuente y cada tabla por capa? |
 | [04 — Catálogo de KPIs](04_kpis.md) | ¿Cómo se calcula cada KPI, cuál es su meta y cómo se interpreta? |
 | [05 — Operación y troubleshooting](05_operacion.md) | ¿Cómo levanto, ejecuto y pruebo el proyecto? ¿Qué hago si algo falla? |
@@ -21,6 +21,7 @@ Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 18** (ob
 | [09 — Simulador Monte Carlo](09_simulador_montecarlo.md) | ¿Qué es Monte Carlo, cómo se simulan pérdidas y escenarios de estrés, y qué supone? |
 | [10 — Asistente financiero con IA](10_asistente_ia.md) | ¿Cómo responde preguntas en lenguaje natural con Ollama + Llama 3, sin inventar cifras? |
 | [11 — Observabilidad y hardening](11_observabilidad.md) | ¿Cómo se vigila sola la plataforma? Métricas, SLA, alertas, Vista 0 y guiones de presentación |
+| [12 — Portal del cliente con asesor virtual](12_asesor_cliente.md) | ¿Cómo orienta la IA a un cliente sin ejecutivo disponible, sin inventar ni prometer? |
 
 ## Stack tecnológico
 
@@ -34,8 +35,8 @@ Cubre de la **Semana 4** (inicio del trabajo con código) a la **Semana 18** (ob
 | Machine Learning | scikit-learn (scorecard WoE + logística, HistGradientBoosting) | Modelo de riesgo con calibración, registro y campeón/retador |
 | Series de tiempo | numpy/pandas (suavizamiento exponencial, Holt, estacional) | Pronóstico financiero del cliente demo |
 | Simulación | numpy + scipy (Monte Carlo, modelo de Vasicek/Basilea, bootstrap) | Escenarios de estrés de la cartera y del cliente demo |
-| IA generativa | Ollama + Llama 3.2 + LangChain (local, gratis) | Asistente que responde preguntas sobre la cartera |
-| Visualización | Streamlit + Plotly | Dashboard técnico (8501) y dashboard ejecutivo (8502) |
+| IA generativa | Ollama + Llama 3.2 + LangChain (local, gratis) | Asistente para ejecutivos (cartera) y asesor para clientes (sus finanzas) |
+| Visualización | Streamlit + Plotly | Dashboard técnico (8501), dashboard ejecutivo (8502) y portal del cliente (8503) |
 | Infraestructura | Docker Compose | Todos los servicios en contenedores |
 | Metadatos Airflow | PostgreSQL 15 | Base de datos interna de Airflow |
 | Pruebas | pytest | `tests/` (KPIs, reporte, modelo, pronóstico, simulador, asistente, observabilidad) |
@@ -71,6 +72,8 @@ PathData_backend/
 │   ├── asistente_financiero.py       # S17: asistente con IA (Ollama)
 │   ├── evaluar_asistente.py          # S17: evaluación (veracidad y éxito)
 │   ├── observabilidad.py             # S18: métricas, SLA y alertas
+│   ├── asesor_cliente.py             # S19: asesor financiero del cliente
+│   ├── evaluar_asesor.py             # S19: evaluación del asesor
 │   └── bronzeAudit.py                # S8: auditoría de Bronze (versionado en S18)
 ├── config/                       # Contratos declarativos
 │   ├── silver_schema.yml             # S9: reglas de Silver
@@ -79,7 +82,7 @@ PathData_backend/
 │   ├── modelo_credito.yml            # S15: parámetros del modelo
 │   ├── simulador.yml                 # S16: escenarios del simulador
 │   └── slas.yml                      # S18: acuerdos de nivel de servicio
-├── dashboard/                    # Streamlit: app.py (técnico, S10–S15) y ejecutivo.py (S13–S17)
+├── dashboard/                    # Streamlit: app.py (técnico, S10–S15) y ejecutivo.py (S13–S17) y cliente.py (S19)
 ├── tests/                        # S12: pruebas unitarias
 ├── pathDataBBVA.py               # S4: exploración y profiling
 ├── docker-compose.yml / Dockerfile / Dockerfile.streamlit
@@ -96,6 +99,7 @@ docker compose up -d
 # Spark UI:  http://localhost:8081
 # Dashboard técnico:   http://localhost:8501  (Vista 0 = observabilidad)
 # Dashboard ejecutivo: http://localhost:8502  (incluye el asistente)
+# Portal del cliente:  http://localhost:8503  (asesor financiero virtual)
 # Ollama (IA local):   http://localhost:11434
 ```
 

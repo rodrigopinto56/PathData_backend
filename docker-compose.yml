@@ -200,6 +200,37 @@ services:
       - ollama
     restart: unless-stopped
 
+  # Semana 19: portal del CLIENTE con asesor financiero virtual.
+  # Misma imagen, otra app y otro puerto. Usa el mismo Ollama que el ejecutivo.
+  streamlit-cliente:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: streamlit_cliente
+    command: ["streamlit", "run", "cliente.py", "--server.address=0.0.0.0", "--server.port=8503", "--theme.base=light", "--theme.primaryColor=#072146"]
+    ports:
+      - "8503:8503"
+    environment:
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?Falta MINIO_ROOT_USER en .env (copia .env.example a .env)}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?Falta MINIO_ROOT_PASSWORD en .env (copia .env.example a .env)}"
+      GOLD_BUCKET: "gold-layer"
+      ML_BUCKET: "ml-models"
+      OLLAMA_URL: "http://ollama:11434"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-llama3.2:3b}"
+      CARPETA_REPORTES: "/app/data/reports"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8503/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - minio
+      - ollama
+    restart: unless-stopped
+
   # Semana 17: servidor de modelos de lenguaje local (gratis, sin enviar
   # datos a internet). El modelo se guarda en el volumen ollama-models para
   # no volver a descargarlo.

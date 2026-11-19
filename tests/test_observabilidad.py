@@ -52,7 +52,8 @@ def _entradas(corridas, **extra):
                         "modo": ["ia"] * 9 + ["respaldo"], "segundos": [20.0] * 10, "reintentos": [0] * 10})
     base = {"corridas": corridas, "calidad": calidad, "asistente_log": log,
             "modelo": {"fecha_entrenamiento": (AHORA - pd.Timedelta(days=3)).isoformat()},
-            "evaluacion": {"exito_final_pct": 86.7}, "eventos": pd.DataFrame()}
+            "evaluacion": {"exito_final_pct": 86.7}, "evaluacion_asesor": {"exito_final_pct": 90.0},
+            "eventos": pd.DataFrame()}
     return {**base, **extra}
 
 

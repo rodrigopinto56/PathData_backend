@@ -29,6 +29,7 @@ docker compose up -d
 | Spark UI | http://localhost:8081 | — |
 | Dashboard técnico | http://localhost:8501 | — |
 | Dashboard ejecutivo | http://localhost:8502 | — |
+| Portal del cliente (S19) | http://localhost:8503 | Número de cliente (demo) |
 
 > Desde la Semana 14, `downloadRawData.py` descarga también `credit_risk` y las transacciones del cliente demo.
 > Son **opcionales**: si alguna falla, se avisa y el pipeline las salta.

@@ -375,3 +375,34 @@ Aparecieron al correr la malla con datos reales: el entrenamiento semanal salía
 - en la segunda corrida, sin cambios, no repitió ninguna.
 
 La Vista 0 se revisó en el navegador con datos de prueba, sin errores.
+
+## Semana 19 — Portal del cliente con asesor financiero virtual
+
+**Objetivo:** corregir el enfoque de la IA. El asistente de la S17 habla con ejecutivos sobre la cartera, pero la meta
+también era atender a **un cliente que necesita orientación y no tiene a un ejecutivo disponible**.
+
+**Qué se hizo**
+- **`dashboard/cliente.py` (puerto 8503):** portal con 5 secciones:
+  - salud financiera (puntaje 0–100 y 4 pilares);
+  - plan de acción con montos;
+  - simulador "¿y si recorto mis gastos?" y presupuesto 50/30/20;
+  - comparación con personas de su edad;
+  - chat con el asesor.
+- **`scripts/asesor_cliente.py`:** reglas de los pilares (mismas metas que los KPIs del banco), plan, comparativo,
+  enrutador de 10 temas, consultas y verificador. Reutiliza del asistente S17 la cadena de LangChain, el verificador
+  de cifras y la conexión con Ollama.
+- **Reglas de seguridad sin IA:** fraude, robo o NIP se derivan a una persona; preguntas por otro cliente se niegan.
+- **Verificador ampliado:** rechaza promesas ("te aprobamos") y menciones a otros clientes.
+- **`scripts/evaluar_asesor.py`:** 30 preguntas (10 por cada uno de 3 clientes de ejemplo) y nuevo SLA "Exactitud
+  del asesor del cliente" (ahora son 9 SLA). El registro de preguntas tiene `canal` (ejecutivo / cliente).
+- **Pruebas:** 53 nuevas (171 en total).
+- **Documentación:** [12 — Portal del cliente con asesor virtual](12_asesor_cliente.md).
+
+**Decisiones técnicas**
+- **El cliente no ve su probabilidad de impago ni el índice interno:** se le explica con sus propios números y reglas públicas.
+- **Privacidad:** comparaciones solo con medianas de grupos de al menos 30 clientes; el log guarda el tema, no el texto.
+- **Capacidad de pago responsable:** una mensualidad nueva nunca se sugiere por arriba de lo que le sobra al cliente al mes.
+
+**Evidencia:** el portal se revisó en el navegador (escritorio y celular) con datos sintéticos, en modo básico. El banco
+de evaluación en modo básico da 100%. La medición con Llama 3.2 se corre en la máquina del equipo
+(`docker compose exec streamlit-cliente python evaluar_asesor.py`).

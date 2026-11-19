@@ -730,7 +730,7 @@ if pregunta:
         # Semana 18: una linea por pregunta para la observabilidad (Vista 0 del dashboard tecnico)
         obs.registrar_pregunta({
             "timestamp": pd.Timestamp.now(tz="America/Mexico_City").isoformat(), "fecha_datos": fecha,
-            "pregunta": pregunta[:200], "modo": resultado["modo"], "segundos": round(time.time() - inicio, 1),
+            "canal": "ejecutivo", "pregunta": pregunta[:200], "modo": resultado["modo"], "segundos": round(time.time() - inicio, 1),
             "reintentos": resultado.get("reintentos", 0), "consultas": resultado["consultas"],
             "cifras_no_verificadas": len(resultado.get("cifras_no_verificadas", [])),
             "modelo": asis.OLLAMA_MODEL if resultado["modo"] != "basico" else None,
