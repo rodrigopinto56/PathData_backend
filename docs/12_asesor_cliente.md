@@ -112,6 +112,7 @@ Vista 0. En modo básico (sin IA) el banco da 100%; con IA, mide cuánto se pier
 | Medición | Preguntas | Enrutamiento | Veracidad final | Éxito final | Tiempo promedio |
 |---|---|---|---|---|---|
 | 1a (19 nov) | 20 | 100% | 100% | **55%** | 20.4 s (la primera, 75 s) |
+| 2a, con las mejoras | 30 | 100% | 100% | **93.3%** ✅ | 15.7 s (carga del modelo aparte: 30.7 s) |
 
 **Diagnóstico:** ninguna cifra inventada llegó al cliente (veracidad 100%), pero en 9 de 20 respuestas la IA dio
 consejos correctos **sin la cifra que se preguntó**. Un modelo de 3B tiende a responder en general. Además, solo
@@ -128,6 +129,10 @@ hubo 2 clientes de ejemplo (20 preguntas), porque uno de los perfiles "de libro"
    - **Modelo en memoria:** se queda cargado 60 min entre preguntas (`keep_alive`).
    - **Respuestas más cortas:** máximo 220 tokens, solo los pasos.
    - **Cifra al instante:** se muestra en cuanto se calcula, mientras la IA escribe.
+
+Los 2 fallos de la 2ª medición eran clientes con préstamo **sin mensualidad registrada**: no recibían ningún dato.
+Ahora el asesor les dice el tipo y monto de su préstamo y dónde consultar la mensualidad. También se corrigió la
+frase para quien gasta más de lo que gana ("hoy gastas $786 más de lo que ganas", en lugar de "te quedan -$786").
 
 > Nota honesta para el jurado: con este diseño el **éxito** mide que el cliente recibe el dato correcto (lo
 > garantiza el sistema). La calidad de lo que redacta la IA se mide con la **veracidad** y con el
@@ -149,7 +154,7 @@ hubo 2 clientes de ejemplo (20 preguntas), porque uno de los perfiles "de libro"
 | `scripts/evaluar_asesor.py` | Banco de 30 preguntas y métricas |
 | `dashboard/cliente.py` | Interfaz del portal (puerto 8503) |
 | `dashboard/data_loader.py` | Agrega `rango_edad` y `tipo_prestamo` al detalle por cliente |
-| `tests/test_asesor_cliente.py` | 60 pruebas, sin Ollama |
+| `tests/test_asesor_cliente.py` | 61 pruebas, sin Ollama |
 | `docker-compose.yml` / `Dockerfile.streamlit` | Servicio `streamlit-cliente` |
 
 ## 9. Limitaciones

@@ -178,6 +178,10 @@ def _css(ancho_max: int) -> str:
 
       /* --- Botones --- */
       .stApp .stButton button, .stApp .stDownloadButton button {{ border-radius:8px; font-weight:600; }}
+      /* Texto blanco en botones primarios (la regla de color de parrafos no debe ganarle) */
+      .stApp button[kind^="primary"], .stApp button[kind^="primary"] p,
+      .stApp [data-testid^="baseButton-primary"], .stApp [data-testid^="baseButton-primary"] p,
+      .stApp [data-testid^="stBaseButton-primary"], .stApp [data-testid^="stBaseButton-primary"] p {{ color:#FFFFFF !important; }}
       .stApp .stButton button[kind="secondary"] {{ border-color:#C5D3E3; color:{CORE}; background:{SUPERFICIE}; }}
       .stApp .stButton button[kind="secondary"]:hover {{ border-color:{CORE}; background:#F0F6FC; }}
 

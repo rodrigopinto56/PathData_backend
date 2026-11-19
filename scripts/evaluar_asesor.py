@@ -64,6 +64,8 @@ def _hechos_fondo(p):
 def _hechos_deuda(p):
     if not p["tiene_prestamo"]:
         return ["no tienes préstamos", "no tienes ningún préstamo", "sin préstamos"]
+    if p["pago_deuda"] is None or p["endeudamiento"] is None:  # prestamo sin mensualidad registrada
+        return ["no tenemos registrada tu mensualidad"] + ([usd(p["monto_prestamo"])] if p["monto_prestamo"] else [])
     return [usd(p["pago_deuda"]), rep.fmt_pct(p["endeudamiento"] * 100)]
 
 

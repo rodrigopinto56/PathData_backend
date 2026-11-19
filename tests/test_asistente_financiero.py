@@ -251,7 +251,9 @@ def test_integracion_chat_ollama(datos, ollama_falso):
 
     llm = A.crear_llm("llama3.2:3b", ollama_falso)
     resultado = A.responder("¿Cómo está la cartera?", datos, llm=llm)
-    assert resultado["modo"] == "ia" and resultado["respuesta"] == "La cartera está saludable."
+    # S19: el dato principal lo pone el sistema y la IA agrega el contexto
+    assert resultado["modo"] == "ia" and resultado["respuesta"].endswith("\n\nLa cartera está saludable.")
+    assert resultado["respuesta"].startswith(resultado["principal"]) and "Diagnóstico general" in resultado["principal"]
     mensajes = _OllamaFalso.recibido["messages"]
     assert [m["role"] for m in mensajes] == ["system", "user", "assistant", "user"]  # reglas + ejemplo + pregunta
     assert "Copia las cifras exactamente" in mensajes[0]["content"]
@@ -288,6 +290,82 @@ def test_redondear_no_es_inventar():
 def test_dato_principal_ya_calculado(datos):
     segmentos = A.consulta_segmentos(datos, "region")
     mayor = segmentos.splitlines()[2].split(":")[0].lstrip("- ")  # primer renglon de la tabla
-    assert segmentos.startswith("Dato principal") and f"mayor riesgo está en {mayor}" in segmentos
-    assert "Dato principal, ¿alcanza el colchón actual?" in A.consulta_escenarios(datos)
+    assert segmentos.startswith("Dato principal") and mayor in segmentos.splitlines()[0]
+    assert A.consulta_escenarios(datos).startswith("Dato principal: el colchón actual")
+    assert "escenario Severo" in A.consulta_escenarios(datos, "severo").splitlines()[0]
     assert A.consulta_prioritarios(datos).startswith("Dato principal: llamar primero a")
+
+
+# --- S19: dato principal del sistema + evaluacion de 50 preguntas -------------------------
+def test_la_cifra_principal_la_pone_el_sistema(datos):
+    """Aunque la IA solo de contexto general, la respuesta trae la cifra pedida."""
+    llm = FakeListChatModel(responses=["- Conviene revisarlo con el equipo de riesgos."])
+    r = A.responder("¿Cuál es la pérdida esperada?", datos, llm)
+    assert r["modo"] == "ia" and r["respuesta"].startswith("Pérdida esperada de la cartera")
+    assert r["respuesta"].endswith("- Conviene revisarlo con el equipo de riesgos.")
+
+
+def test_el_dato_principal_se_muestra_antes_de_esperar_a_la_ia(datos):
+    vistos = []
+
+    class LLMLento(FakeListChatModel):
+        def _call(self, *args, **kwargs):
+            assert vistos, "el tablero debe recibir el dato ANTES de que la IA responda"
+            return super()._call(*args, **kwargs)
+
+    r = A.responder("¿Cuál es la pérdida esperada?", datos, LLMLento(responses=["- Contexto."]),
+                    al_tener_principal=vistos.append)
+    assert vistos == [r["principal"]]
+
+
+def test_meta_se_dice_con_si_o_no(datos):
+    principal = A.mensaje_principal(A.consulta_indicadores(datos, ["capacidad_ahorro_mediana_pct"]))
+    assert "se cumple la meta" in principal
+
+
+def test_empate_entre_segmentos():
+    tabla = pd.DataFrame({"Segmento": ["Europa", "Asia", "África"], "Índice de riesgo": [31.2, 30.6, 25.0]})
+    assert A.segmentos_empatados(tabla) == ["Europa", "Asia"]
+    frase = A._frase_mayor_riesgo(tabla, "región")
+    assert "prácticamente empatado" in frase and "Europa" in frase and "Asia" in frase and "dentro de la meta" in frase
+    sin_empate = tabla.assign(**{"Índice de riesgo": [45.0, 30.6, 25.0]})
+    assert "está en Europa (índice 45, fuera de la meta" in A._frase_mayor_riesgo(sin_empate, "región")
+
+
+def test_regiones_del_dataset_real_se_traducen():
+    import reporte_ejecutivo as rep
+
+    assert rep.traducir("Europe") == "Europa" and rep.traducir("North America") == "Norteamérica"
+
+
+def test_cliente_demo_pronostico_o_escenario(datos):
+    assert A.enfoque_cliente_demo("cual es el pronostico del cliente demo") == "pronostico"
+    assert A.enfoque_cliente_demo("el cliente demo aguanta perder su empleo") == "desempleo"
+    pronostico = A.mensaje_principal(A.consulta_cliente_demo(datos, "pronostico"))
+    assert "ingreso promedio" in pronostico and "gasto promedio" in pronostico
+    assert "quede sin ahorro" in A.mensaje_principal(A.consulta_cliente_demo(datos, "desempleo"))
+
+
+def test_banco_de_50_preguntas_con_ia_generica_cumple_la_meta(datos):
+    """Con una IA que solo da contexto general, el exito depende del sistema: debe ser 100%."""
+    import evaluar_asistente as E
+
+    llm = FakeListChatModel(responses=["- Conviene darle seguimiento cada semana."])
+    tabla, resumen = E.evaluar(datos, llm, repeticiones=2)
+    assert resumen["preguntas"] == 100 and resumen["repeticiones"] == 2
+    assert resumen["enrutamiento_pct"] == 100 and resumen["exito_final_pct"] == 100
+    assert resumen["exito_final_por_ronda"] == [100.0, 100.0] and resumen["veracidad_final_pct"] == 100
+
+
+def test_evaluador_acepta_equivalencias_de_significado(datos):
+    import evaluar_asistente as E
+
+    fila = datos.kpis[datos.kpis["kpi"] == "capacidad_ahorro_mediana_pct"].iloc[0]
+    respuesta = "Sí, se cumple la meta." if fila["estado"] == "OK" else "No, no se cumple la meta."
+    assert E.contiene_hecho(respuesta, E._estado(datos, "capacidad_ahorro_mediana_pct"))
+
+
+def test_configuracion_rapida_del_modelo():
+    llm = A.crear_llm(url="http://127.0.0.1:9")
+    assert llm.keep_alive == A.KEEP_ALIVE and llm.num_predict == A.MAX_TOKENS_CONTEXTO and llm.num_ctx == 4096
+    assert A.calentar_modelo(url="http://127.0.0.1:9", timeout=1) is False

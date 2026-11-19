@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 
 import pandas as pd
@@ -667,7 +668,15 @@ def _estado_ollama() -> tuple[bool, str]:
 
 @st.cache_resource
 def _llm():
-    return asis.crear_llm()
+    return asis.crear_llm()   # S19: respuestas cortas y modelo en memoria
+
+
+@st.cache_resource(ttl=50 * 60, show_spinner=False)
+def _calentar_modelo() -> bool:
+    """Carga el modelo en segundo plano al abrir el tablero (y antes de que Ollama
+    lo libere): la primera pregunta ya no espera ~1 minuto."""
+    threading.Thread(target=asis.calentar_modelo, daemon=True).start()
+    return True
 
 
 def _markdown_seguro(texto: str) -> str:
@@ -682,7 +691,9 @@ st.caption(
     f"{asis.OLLAMA_MODEL}); ningún dato sale a internet. Responde solo con la información de este tablero "
     f"y de la fecha seleccionada ({rep.fecha_legible(fecha)})."
 )
-if not ia_disponible:
+if ia_disponible:
+    _calentar_modelo()
+else:
     st.info(f"{detalle_ia} Mientras tanto, el asistente responde en **modo básico**: muestra los datos "
             "que encontró, sin redactarlos con IA.")
 
@@ -700,20 +711,6 @@ for i, ejemplo in enumerate(asis.PREGUNTAS_EJEMPLO):
         pregunta = ejemplo
 pregunta = st.chat_input("Escribe tu pregunta sobre la cartera (por ejemplo: ¿por qué el cliente U00041 es riesgoso?)") or pregunta
 
-if pregunta:
-    with st.spinner("Consultando los datos y redactando la respuesta…"):
-        inicio = time.time()
-        resultado = asis.responder(pregunta, datos_asistente, _llm() if ia_disponible else None)
-        historial.append({"pregunta": pregunta, **resultado})
-        # Semana 18: una linea por pregunta para la observabilidad (Vista 0 del dashboard tecnico)
-        obs.registrar_pregunta({
-            "timestamp": pd.Timestamp.now(tz="America/Mexico_City").isoformat(), "fecha_datos": fecha,
-            "canal": "ejecutivo", "pregunta": pregunta[:200], "modo": resultado["modo"], "segundos": round(time.time() - inicio, 1),
-            "reintentos": resultado.get("reintentos", 0), "consultas": resultado["consultas"],
-            "cifras_no_verificadas": len(resultado.get("cifras_no_verificadas", [])),
-            "modelo": asis.OLLAMA_MODEL if resultado["modo"] != "basico" else None,
-        })
-
 for turno in historial[-6:]:
     with st.chat_message("user"):
         st.markdown(_markdown_seguro(turno["pregunta"]))
@@ -729,6 +726,31 @@ for turno in historial[-6:]:
         if turno["modo"] == "ia":
             with st.expander("Ver los datos que usó el asistente"):
                 st.text(turno["contexto"])
+if pregunta:
+    with st.chat_message("user"):
+        st.markdown(_markdown_seguro(pregunta))
+    with st.chat_message("assistant"):
+        vista = st.empty()
+
+        def _mostrar_principal(principal: str) -> None:
+            # S19: el dato lo calcula el sistema y se muestra al instante mientras la IA agrega contexto
+            vista.markdown(_markdown_seguro(principal) + "\n\n*Agregando contexto…*")
+
+        with st.spinner("Consultando los datos…"):
+            inicio = time.time()
+            resultado = asis.responder(pregunta, datos_asistente, _llm() if ia_disponible else None,
+                                       al_tener_principal=_mostrar_principal)
+    historial.append({"pregunta": pregunta, **resultado})
+    # Semana 18: una linea por pregunta para la observabilidad (Vista 0 del dashboard tecnico)
+    obs.registrar_pregunta({
+        "timestamp": pd.Timestamp.now(tz="America/Mexico_City").isoformat(), "fecha_datos": fecha,
+        "canal": "ejecutivo", "pregunta": pregunta[:200], "modo": resultado["modo"], "segundos": round(time.time() - inicio, 1),
+        "reintentos": resultado.get("reintentos", 0), "consultas": resultado["consultas"],
+        "cifras_no_verificadas": len(resultado.get("cifras_no_verificadas", [])),
+        "modelo": asis.OLLAMA_MODEL if resultado["modo"] != "basico" else None,
+    })
+    st.rerun()  # la respuesta completa se dibuja con el historial
+
 if historial and st.button("Borrar conversación"):
     historial.clear()
     st.rerun()

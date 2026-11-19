@@ -77,6 +77,18 @@ TRADUCCION_VALORES = {
     "East": "Este",
     "West": "Oeste",
     "Central": "Centro",
+    # S19: regiones del dataset real (continentes). Sin esto el tablero decia
+    # "Europe" y la IA respondia "Europa": la evaluacion lo contaba como error.
+    "Europe": "Europa",
+    "Asia": "Asia",
+    "Africa": "África",
+    "North America": "Norteamérica",
+    "South America": "Sudamérica",
+    "Latin America": "Latinoamérica",
+    "Oceania": "Oceanía",
+    "Australia": "Australia",
+    "Middle East": "Medio Oriente",
+    "Other": "Otra",
 }
 
 MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]

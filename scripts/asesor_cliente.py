@@ -38,7 +38,6 @@ Funciones puras sobre DataFrames: la E/S la hace quien llama (dashboard/cliente.
 from __future__ import annotations
 
 import math
-import os
 import re
 from dataclasses import dataclass, field
 
@@ -507,8 +506,10 @@ def consulta_ahorro(d: DatosCliente) -> str:
     if x.estado == "sin_datos":
         return "No hay datos de tu ingreso o gasto."
     usd = rep.fmt_usd
+    hoy = (f"hoy te quedan {usd(p['flujo'])} al mes ({_pct(p['tasa_ahorro'])})" if p["flujo"] >= 0
+           else f"hoy gastas {usd(-p['flujo'])} más de lo que ganas cada mes")
     lineas = [f"Dato principal: la meta es ahorrar {usd(UMBRAL_AHORRO * p['ingreso'])} al mes (20% de tu ingreso de "
-              f"{usd(p['ingreso'])}); hoy te quedan {usd(p['flujo'])} al mes ({_pct(p['tasa_ahorro'])}).",
+              f"{usd(p['ingreso'])}); {hoy}.",
               _linea_pilar(x)]
     return "\n".join(lineas + _acciones_de(p, "ahorro"))
 
@@ -532,7 +533,11 @@ def consulta_deuda(d: DatosCliente) -> str:
         return "Dato principal: no tienes préstamos con el banco; nada de tu ingreso se va en mensualidades."
     x = _pilar(p, "deuda")
     if x.estado == "sin_datos":
-        return "No hay datos de tu mensualidad."
+        # S19: en la 1a evaluacion estos clientes (prestamo sin mensualidad registrada) no recibian ningun dato
+        tipo = f" {p['tipo_prestamo'].lower()}" if p["tipo_prestamo"] else ""
+        monto = f" de {usd(p['monto_prestamo'])}" if p["monto_prestamo"] else ""
+        return (f"Dato principal: tienes un préstamo{tipo}{monto}, pero no tenemos registrada tu mensualidad; "
+                "la encuentras en tu estado de cuenta o con un ejecutivo.")
     detalle = [f"préstamo {p['tipo_prestamo'].lower()}" if p["tipo_prestamo"] else "préstamo"]
     if p["monto_prestamo"]:
         detalle.append(f"de {usd(p['monto_prestamo'])}")
@@ -672,8 +677,8 @@ def ejecutar_temas(d: DatosCliente, temas: list[str]) -> str:
 #   1) el "Dato principal" (cifra exacta) lo escribe el SISTEMA, no la IA;
 #   2) la IA solo redacta 2-3 pasos concretos (texto corto = mas rapido).
 # Asi la cifra pedida siempre esta, y la IA aporta lo que hace bien: explicar.
-KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE_ASESOR", "60m")  # modelo en memoria entre preguntas
-MAX_TOKENS_PASOS = 220                                       # 2-3 viñetas cortas
+KEEP_ALIVE = asis.KEEP_ALIVE        # mismo ajuste que el asistente ejecutivo
+MAX_TOKENS_PASOS = 220               # 2-3 viñetas cortas
 
 SISTEMA = """Eres el asesor financiero virtual de un banco. Hablas directamente con UN CLIENTE que no tiene a un ejecutivo disponible. Usa UNICAMENTE la informacion que viene entre <datos> y </datos>; son los datos de ese cliente.
 
@@ -702,15 +707,10 @@ PATRON_PROMESA = re.compile(r"te (lo )?(aprobamos|aprobaremos|aprobaran|van a ap
                             r"garantiz\w* (que|tu|el|la)|seguro que te (aprueban|dan)|rendimiento (seguro|garantizado)")
 
 
-def datos_principales(contexto: str) -> list[str]:
-    """Las oraciones "Dato principal: ..." del contexto, listas para el cliente."""
-    return [linea.removeprefix("Dato principal: ").strip()[:1].upper() + linea.removeprefix("Dato principal: ").strip()[1:]
-            for linea in contexto.splitlines() if linea.startswith("Dato principal: ")]
-
-
-def mensaje_principal(contexto: str) -> str:
-    """Lo que el sistema le dice primero al cliente (maximo 2 temas)."""
-    return " ".join(datos_principales(contexto)[:2])
+# Mismas piezas que el asistente ejecutivo (S19): una sola implementacion
+datos_principales = asis.datos_principales
+mensaje_principal = asis.mensaje_principal
+calentar_modelo = asis.calentar_modelo
 
 
 def problemas_respuesta(respuesta: str, contexto: str, pregunta: str, user_id: str) -> list[str]:
@@ -725,24 +725,7 @@ def problemas_respuesta(respuesta: str, contexto: str, pregunta: str, user_id: s
 
 def crear_llm(modelo: str | None = None, url: str | None = None):
     """ChatOllama para el asesor: respuestas cortas y el modelo se queda en memoria."""
-    from langchain_ollama import ChatOllama
-
-    return ChatOllama(model=modelo or asis.OLLAMA_MODEL, base_url=url or asis.OLLAMA_URL, temperature=0,
-                      num_ctx=3072, num_predict=MAX_TOKENS_PASOS, keep_alive=KEEP_ALIVE)
-
-
-def calentar_modelo(url: str | None = None, modelo: str | None = None, timeout: float = 180.0) -> bool:
-    """Carga el modelo en memoria ANTES de la primera pregunta (la primera carga
-    tarda ~1 minuto en CPU). Ollama lo hace con un prompt vacio. Nunca truena."""
-    import httpx
-
-    try:
-        r = httpx.post(f"{url or asis.OLLAMA_URL}/api/generate",
-                       json={"model": modelo or asis.OLLAMA_MODEL, "prompt": "", "keep_alive": KEEP_ALIVE},
-                       timeout=timeout)
-        return r.status_code == 200
-    except Exception:
-        return False
+    return asis.crear_llm(modelo, url, num_ctx=3072, num_predict=MAX_TOKENS_PASOS)
 
 
 def crear_cadena(llm):
@@ -762,10 +745,6 @@ def respuesta_basica(contexto: str, motivo: str = "") -> str:
     texto = re.sub(r"Dato principal: (\w)", lambda m: m.group(1).upper(), contexto)
     texto = re.sub(r" \| estado: ([^|]+?) \| Meta: [^.]+\.", r" (\1).", texto)
     return (motivo + "\n\n" if motivo else "") + texto
-
-
-def _unir(principal: str, pasos: str) -> str:
-    return f"{principal}\n\n{pasos}" if principal else pasos
 
 
 def responder_cliente(pregunta: str, datos: DatosCliente, llm=None, al_tener_principal=None) -> dict:
@@ -812,5 +791,5 @@ def responder_cliente(pregunta: str, datos: DatosCliente, llm=None, al_tener_pri
                     contexto, "Para darte una respuesta exacta, te comparto directamente tus datos:")}
     except Exception as error:  # Ollama caido: el portal sigue funcionando
         return {**base, "modo": "basico", "error": str(error)[:300], "respuesta": respuesta_basica(contexto)}
-    return {**base, "modo": "ia", "pasos": pasos, "respuesta": _unir(principal, pasos),
+    return {**base, "modo": "ia", "pasos": pasos, "respuesta": asis.unir_respuesta(principal, pasos),
             "cifras_no_verificadas": asis.cifras_no_respaldadas(pasos, contexto, pregunta)}

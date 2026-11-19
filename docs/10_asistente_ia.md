@@ -76,7 +76,7 @@ docker compose logs -f ollama-init
 - **Memoria:** Docker Desktop debe tener al menos 6 GB asignados (Settings → Resources) con `llama3.2:3b`, o 10 GB con `llama3.1:8b`.
 - **Velocidad:** sin GPU, una respuesta tarda entre 5 y 30 s, según la máquina. Es normal.
 
-## 5. Pruebas (`tests/test_asistente_financiero.py`, 33 pruebas)
+## 5. Pruebas (`tests/test_asistente_financiero.py`, 42 pruebas)
 
 - **Enrutador:** cada pregunta de ejemplo llega a la consulta correcta, y las preguntas del cliente demo no se mezclan con la cartera.
 - **Consultas:** cada una trae los datos correctos (por ejemplo, los prioritarios son los de mayor índice y los segmentos salen ordenados y en español), y las tablas faltantes no rompen nada.
@@ -137,6 +137,57 @@ Fallas encontradas y ajustes:
   - el pronóstico del gasto en lugar del ingreso.
 
 Con los ajustes, la 2ª medición **cumple la meta**. Siguen fallando 4 preguntas: región o zona con más riesgo, "¿se cumple la meta de ahorro?" y el pronóstico del cliente demo. Son las candidatas para la siguiente mejora, o para probar `llama3.1:8b`.
+
+### 3ª medición (19 nov) y mejoras de la Semana 19
+
+| Métrica | 3ª medición (fecha 2026/11/17) |
+|---|---|
+| Enrutamiento | 100% |
+| Veracidad final | 100% |
+| Éxito final | **83.3%** (25 de 30; 0.7 puntos debajo de la meta) |
+| Tiempo promedio | 21.5 s (la primera pregunta, 70 s) |
+
+La diferencia con la 2ª medición (86.7%) es **una sola pregunta**: con 30 preguntas, cada una vale 3.3 puntos.
+Al revisar las 5 respuestas que fallaron:
+
+| Pregunta | Qué pasó | Corrección |
+|---|---|---|
+| Región / zona con más riesgo (2) | La IA respondió bien ("Europa"), pero el tablero no traducía "Europe" y el evaluador esperaba el nombre en inglés | Traducción de las regiones reales en `reporte_ejecutivo.TRADUCCION_VALORES` |
+| ¿Se cumple la meta de ahorro? | Respondió "Sí, se cumple" (correcto); el evaluador solo aceptaba "sí cumple" | El evaluador acepta "se cumple / no se cumple" |
+| ¿Por qué el cliente X es riesgoso? | Explicó las razones (correcto para un "por qué"); el evaluador exigía el índice | Para "por qué" también valen los factores de riesgo |
+| Pronóstico del cliente demo | Habló de la simulación, no del ingreso y gasto pronosticados | La consulta distingue pronóstico y escenario, y trae su dato principal |
+
+En una de las respuestas de región la IA dijo, además, que un índice de 31 estaba "por encima de la meta" (que es menos
+de 40). Es un error de interpretación de la IA, no de una cifra; por eso el dato principal ahora dice explícitamente
+"dentro de la meta" o "fuera de la meta".
+
+**Mejoras aplicadas (las 6 propuestas):**
+1. **El dato principal lo escribe el sistema.** La respuesta es: una oración con la cifra exacta y si cumple la meta,
+   más 2–3 viñetas de contexto redactadas por la IA (estilo "conclusión primero"). Todas las consultas tienen ahora su
+   "Dato principal": resumen, indicadores (los dos primeros), segmentos, cliente, prioritarios, escenarios (según el
+   escenario que se pregunta) y cliente demo (pronóstico o escenario).
+2. **Desempates:** si las regiones (o segmentos) más riesgosas difieren por menos de 1 punto, se dice que están
+   "prácticamente empatadas" y se nombran todas.
+3. **Evaluador justo:** solo equivalencias de significado, documentadas arriba. No se aceptan respuestas incorrectas.
+4. **Velocidad:**
+   - el tablero carga el modelo al abrirse;
+   - el modelo se queda 60 min en memoria (`OLLAMA_KEEP_ALIVE`);
+   - la IA escribe máximo 220 tokens;
+   - el dato principal aparece al instante mientras la IA agrega el contexto.
+5. **Medición más estable:**
+   - el banco pasa de 30 a **50 preguntas** (cada una vale 2 puntos);
+   - `--repeticiones N` corre el banco N veces y reporta el promedio y el resultado de cada ronda;
+   - la carga del modelo se mide aparte (`segundos_carga_modelo`).
+6. **Pruebas:** con datos sintéticos, las 50 preguntas traen el dato correcto en la oración principal. Una prueba
+   lo verifica con una IA simulada que solo da contexto genérico (éxito 100%).
+
+```bash
+docker compose exec streamlit-ejecutivo python evaluar_asistente.py --repeticiones 2
+```
+
+> Nota honesta: con este diseño, el **éxito** mide que el ejecutivo recibe el dato correcto (lo garantiza el
+> sistema). La calidad de lo que redacta la IA se mide con la **veracidad** y con el porcentaje de respuestas que
+> pasan el control a la primera.
 
 ## 7. Limitaciones
 

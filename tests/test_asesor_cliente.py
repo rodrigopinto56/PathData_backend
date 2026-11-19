@@ -329,3 +329,14 @@ def test_configuracion_rapida_del_modelo():
 
 def test_calentar_sin_ollama_no_truena():
     assert C.calentar_modelo(url="http://127.0.0.1:9", timeout=1) is False
+
+
+def test_prestamo_sin_mensualidad_registrada_tambien_da_dato():
+    """Caso de la 2a evaluacion real: cliente con prestamo pero sin mensualidad en los datos."""
+    import evaluar_asesor as E
+
+    p = _cliente()
+    p["pago_deuda"] = p["endeudamiento"] = None
+    contexto = C.consulta_deuda(_datos(p))
+    assert contexto.startswith("Dato principal: tienes un préstamo automotriz de $20,000")
+    assert E.contiene_hecho(C.mensaje_principal(contexto), E._hechos_deuda(p))
